@@ -74,7 +74,7 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
 
 
         const response = await axios.post(
-          'https://chimp-relative-surely.ngrok-free.app/generate',
+          'https://supreme-moray-dominant.ngrok-free.app/generate',
           formData,
           {
             headers: {
@@ -92,7 +92,7 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
         const data = await response.data;
         const file = data.filename.startsWith("http")
         ? data.filename
-        : "https://chimp-relative-surely.ngrok-free.app" + data.filename;
+        : "https://supreme-moray-dominant.ngrok-free.app" + data.filename;
       
         onFileReceived(file);
       

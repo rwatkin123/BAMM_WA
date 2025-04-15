@@ -75,7 +75,7 @@ export default function Canvas({ bvhFile,trigger }: CanvasProps) {
     async function setupModels() {
       const [sourceModel, targetModel]:any[] = await Promise.all([
         new Promise((resolve, reject) => {
-          new BVHLoader().load(`/`+ bvhFile, resolve, undefined, reject);
+          new BVHLoader().load(bvhFile, resolve, undefined, reject);
         }),
         new Promise((resolve, reject) => {
           new GLTFLoader().load('/mesh/mesh.glb', resolve, undefined, reject);

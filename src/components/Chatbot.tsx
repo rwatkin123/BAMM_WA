@@ -80,7 +80,12 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
         }
 
         const data = await response.data;
-        onFileReceived(data.filename); // Send filename to parent component
+        const file = data.filename.startsWith("http")
+        ? data.filename
+        : "https://a0a7-152-15-112-165.ngrok-free.app" + data.filename;
+      
+        onFileReceived(file);
+      
 
       } catch (error) {
         console.error("Error sending message:", error);

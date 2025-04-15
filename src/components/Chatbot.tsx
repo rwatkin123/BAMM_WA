@@ -70,7 +70,8 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
       setSubmittedData(dataArray)
 
       try {
-        const formData = { "text_prompt": dataArray };
+        const formData = { "prompt": dataArray };
+
 
         const response = await axios.post('https://f311-152-15-112-165.ngrok-free.app/generate', formData);
 

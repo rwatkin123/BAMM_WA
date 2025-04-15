@@ -73,7 +73,7 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
         const formData = { "prompt": dataArray };
 
 
-        const response = await axios.post('https://a0a7-152-15-112-165.ngrok-free.app', formData);
+        const response = await axios.post('https://a0a7-152-15-112-165.ngrok-free.app/generate', formData);
 
         if (response.status !== 200) {
           throw new Error(`HTTP error! Status: ${response.status}`);

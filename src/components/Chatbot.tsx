@@ -82,7 +82,7 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
         const data = await response.data;
         const file = data.filename.startsWith("http")
         ? data.filename
-        : "https://a0a7-152-15-112-165.ngrok-free.app" + data.filename;
+        : "https://chimp-relative-surely.ngrok-free.app" + data.filename;
       
         onFileReceived(file);
       

@@ -74,7 +74,7 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
 
 
         const response = await axios.post(
-          'https://supreme-moray-dominant.ngrok-free.app/generate',
+          'https://handy-lamb-enough.ngrok.app/generate',
           formData,
           {
             headers: {
@@ -92,7 +92,7 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
         const data = await response.data;
         const file = data.filename.startsWith("http")
         ? data.filename
-        : "https://supreme-moray-dominant.ngrok-free.app" + data.filename;
+        : "https://handy-lamb-enough.ngrok.app" + data.filename;
       
         onFileReceived(file);
       

@@ -70,7 +70,15 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
       setSubmittedData(dataArray)
 
       try {
-        const formData = { "prompt": dataArray };
+        const formData = {
+          text_prompt: dataArray,
+          motion_length: -1,
+          repeat_times: 1,
+          gpu_id: 0,
+          seed: 1,
+          ext: "generation_fast"
+        };
+        
 
 
         const response = await axios.post(

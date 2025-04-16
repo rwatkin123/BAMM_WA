@@ -74,7 +74,7 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
 
 
         const response = await axios.post(
-          'https://handy-lamb-enough.ngrok.app/generate',
+          'https://handy-lamb-enough.ngrok.app/generate-motion',
           formData,
           {
             headers: {

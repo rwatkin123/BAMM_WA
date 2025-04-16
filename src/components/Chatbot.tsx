@@ -98,7 +98,8 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
         }
 
         const data = response.data;
-        onFileReceived(data.filename);
+        onFileReceived(`https://handy-lamb-enough.ngrok.app${data.filename}`);
+        
         
       
 

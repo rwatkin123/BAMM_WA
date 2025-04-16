@@ -98,7 +98,12 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
         }
 
         const data = response.data;
-        onFileReceived(`https://handy-lamb-enough.ngrok.app${data.filename}`);
+        if (data.filenames && data.filenames.length > 0) {
+          onFileReceived(`https://handy-lamb-enough.ngrok.app${data.filenames[0]}`);
+        } else {
+          console.error("No BVH files returned from backend.");
+        }
+        
         
         
       

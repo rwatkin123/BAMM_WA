@@ -89,12 +89,9 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
 
-        const data = await response.data;
-        const file = data.filename.startsWith("http")
-        ? data.filename
-        : "https://handy-lamb-enough.ngrok.app" + data.filename;
-      
-        onFileReceived(file);
+        const data = response.data;
+        onFileReceived(data.filename);
+        
       
 
       } catch (error) {

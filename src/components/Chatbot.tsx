@@ -101,14 +101,10 @@ export default function Chatbot({ onFileReceived, onSend,onAvatarUpdate }: Chatb
         if (data.filenames) {
           onFileReceived(`https://handy-lamb-enough.ngrok.app/mesh/public/${data.filenames}`);
         }
-        
+        else{
           console.error("No BVH files returned from backend.");
         }
         
-        
-        
-      
-
       } catch (error) {
         console.error("Error sending message:", error);
       }

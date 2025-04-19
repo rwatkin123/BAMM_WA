@@ -298,4 +298,3 @@ const loadTextureAsync = (url) => {
         );
     });
 };
-

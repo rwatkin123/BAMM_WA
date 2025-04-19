@@ -4,13 +4,16 @@ import { useEffect, useState } from "react"
 import Canvas from "@/components/Canvas"
 import Chatbot from "@/components/Chatbot"
 import MeasurementControls, { type Measurements } from "@/components/MeasurementControls"
-import axios from "axios";
-import createAndSaveGLB from "@/lib/createMesh";
+import AvatarGrid from "@/components/AvatarGrid"
+import SidebarNav from "@/components/SidebarNav"
+import axios from "axios"
+import createAndSaveGLB from "@/lib/createMesh"  // ✅ already correct
+import create_glb from "@/components/create_glb"  // ✅ this is the dropdown one
 
 export default function Home() {
   const [bvhFile, setBvhFile] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [trigger, setTrigger] = useState(false);  // Dummy state for re-triggering
+  const [trigger, setTrigger] = useState(false)
   const [measurements, setMeasurements] = useState<Measurements>({
     height: 175,
     inseam: 80,
@@ -18,10 +21,11 @@ export default function Home() {
     waist: 85,
     hips: 95,
   })
-  
-  function handleAvatarUpdate(){
-    setTrigger((prev) => !prev);
+
+  function handleAvatarUpdate() {
+    setTrigger((prev) => !prev)
   }
+
   const handleFileReceived = (filename: string) => {
     setBvhFile(filename)
     setLoading(false)
@@ -33,17 +37,29 @@ export default function Home() {
   }
 
   const handleMeasurementsChange = async (newMeasurements: Measurements) => {
-    await setMeasurements(newMeasurements);
-    const response = await axios.post('http://localhost:8080/calculate-anthrobetas/', newMeasurements);
-    const glbResult = await createAndSaveGLB(response.data);
+    await setMeasurements(newMeasurements)
+    const response = await axios.post('http://localhost:8080/calculate-anthrobetas/', newMeasurements)
+    const glbResult = await createAndSaveGLB(response.data)
 
     if (glbResult === true) {
-        setTrigger((prev) => !prev);  // Toggle trigger to force update
-        console.log("GLB file created successfully, BVH file updated.");
+      setTrigger((prev) => !prev)
+      console.log("GLB file created successfully, BVH file updated.")
     } else {
-        console.error("GLB file creation failed, skipping BVH file update.");
+      console.error("GLB file creation failed, skipping BVH file update.")
     }
-};
+  }
+
+  const handleAvatarSelect = async (folderName: string) => {
+    try {
+      const result = await create_glb(folderName) // ✅ exact same logic as dropdown
+      if (result) {
+        console.log("Avatar loaded successfully.")
+        setTrigger((prev) => !prev)
+      }
+    } catch (err) {
+      console.error("Failed to load avatar:", err)
+    }
+  }
 
   return (
     <div className="flex flex-col h-screen">
@@ -53,19 +69,23 @@ export default function Home() {
         </div>
       ) : (
         <div className="flex-grow flex overflow-hidden">
-          <div className="min-w-[200px] border-r"> 
-            <MeasurementControls initialMeasurements={measurements} onChange={handleMeasurementsChange} /> */}
-          </div>
-          <div className="flex-grow overflow-hidden">
-            <Canvas bvhFile={bvhFile} trigger={trigger} />
-            {/* <Canvas bvhFile={bvhFile} /> */}
+          <SidebarNav />
+          <AvatarGrid onSelectAvatar={handleAvatarSelect} />
+
+          <div className="flex-grow flex flex-col overflow-hidden">
+            <div className="flex-grow overflow-hidden">
+              <Canvas bvhFile={bvhFile} trigger={trigger} />
+            </div>
+            <div className="min-h-20 border-t">
+              <Chatbot
+                onFileReceived={handleFileReceived}
+                onSend={handleSend}
+                onAvatarUpdate={handleAvatarUpdate}
+              />
+            </div>
           </div>
         </div>
       )}
-      <div className="min-h-20 border-t">
-        <Chatbot onFileReceived={handleFileReceived} onSend={handleSend} onAvatarUpdate={handleAvatarUpdate} />
-        
-      </div>
     </div>
   )
 }

@@ -18,8 +18,24 @@ export default function Canvas({ bvhFile,trigger }: CanvasProps) {
   
     const clock = new THREE.Clock();
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xa0a0a0);
-    scene.fog = new THREE.Fog(0xa0a0a0, 3, 25);
+    scene.background = new THREE.Color("#f8fafc"); // Tailwind's gray-50
+    scene.fog = new THREE.Fog("#f8fafc", 3, 25);
+    
+    const textureLoader = new THREE.TextureLoader();
+    const gridTexture = textureLoader.load('/textures/grid.png');
+    gridTexture.wrapS = THREE.RepeatWrapping;
+    gridTexture.wrapT = THREE.RepeatWrapping;
+    gridTexture.repeat.set(1000, 1000);
+    
+    const groundMat = new THREE.MeshBasicMaterial({ map: gridTexture });
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), groundMat);
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.y = 0;
+    scene.add(plane);
+    
+    
+
+
   
     // Lights and camera...
     // (keep your existing light + grid + camera setup code)
@@ -56,15 +72,6 @@ export default function Canvas({ bvhFile,trigger }: CanvasProps) {
       });
   
       scene.add(targetModel.scene);
-// Center the orbit controls target to the model
-const box = new THREE.Box3().setFromObject(targetModel.scene);
-const center = new THREE.Vector3();
-box.getCenter(center);
-
-controls.target.copy(center);
-controls.update();
-
-
 
       targetModel.scene.traverse((child) => {
         if (child.isSkinnedMesh) {
@@ -72,6 +79,20 @@ controls.update();
           child.updateMatrixWorld(true);
         }
       });
+
+      // Shift model down so its lowest point (usually feet) sits on y = 0
+      const box = new THREE.Box3().setFromObject(targetModel.scene);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      
+      // Move model down by the distance from lowest Y point to y=0
+      targetModel.scene.position.y -= box.min.y;
+      
+      // Optional: improve orbit controls centering
+      controls.target.set(center.x, center.y / 2, center.z);
+      controls.update();
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
       scene.add(ambientLight);

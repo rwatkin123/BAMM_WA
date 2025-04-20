@@ -5,7 +5,7 @@ export default function SidebarNav() {
 <div className="w-24 bg-gray-800 text-white flex flex-col items-center py-4 h-full">
 <div className="flex flex-col items-center mb-6">
         <div className="w-12 h-12 rounded-full overflow-hidden mb-2 bg-gray-700">
-          <img src="/placeholder.svg?height=48&width=48&query=cartoon avatar" alt="Avatar" className="w-full h-full object-cover" />
+          <img src="/avatar.png?height=48&width=48&query=cartoon avatar" alt="Avatar" className="w-full h-full object-cover" />
         </div>
         <div className="text-xs">Avatars</div>
       </div>

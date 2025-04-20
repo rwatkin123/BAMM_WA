@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import LazyImage from "./LazyImage" // ✅ import your lazy loader component
+import LazyImage from "./LazyImage"
 
 interface AvatarGridProps {
   onSelectAvatar: (filename: string) => void
@@ -31,34 +31,28 @@ export default function AvatarGrid({ onSelectAvatar }: AvatarGridProps) {
   }
 
   return (
-    <div className="w-80 bg-white border-r h-full overflow-y-auto p-3">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="w-80 bg-white border-r h-full overflow-y-auto p-4 space-y-4">
+      <div className="grid grid-cols-2 gap-4">
         {files.map((filename) => (
           <div
             key={filename}
-            className={`rounded-lg border-2 p-[2px] cursor-pointer transition-all ${
+            className={`rounded-xl shadow-sm border transition-all ${
               selected === filename
-                ? "border-blue-500"
-                : "border-transparent hover:border-gray-300"
+                ? "border-blue-500 ring-2 ring-blue-300"
+                : "border-gray-200 hover:shadow-md hover:border-gray-300"
             }`}
             onClick={() => handleSelect(filename)}
           >
-            <div className="h-40 rounded-md overflow-hidden bg-gray-100 relative flex items-center justify-center">
-              
-              {/* ✅ LazyImage replaces <img> */}
+            <div className="aspect-[3/4] relative rounded-t-xl overflow-hidden">
               <LazyImage filename={filename} />
-
-              <span className="absolute bottom-1 left-1 right-1 text-[10px] text-center text-white bg-black/40 px-1 rounded">
-                {filename}
-              </span>
+            </div>
+            <div className="text-xs text-center px-2 py-2 font-medium text-gray-700 truncate">
+              {filename}
             </div>
           </div>
         ))}
       </div>
-
-      <div className="mt-4 text-center text-xs text-gray-500">
-        Scroll For More
-      </div>
+      <div className="text-center text-xs text-gray-400">Scroll for more</div>
     </div>
   )
 }

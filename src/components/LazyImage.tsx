@@ -1,4 +1,3 @@
-// components/LazyImage.tsx
 "use client"
 
 import { useEffect, useRef, useState } from "react"
@@ -8,7 +7,7 @@ interface Props {
 }
 
 export default function LazyImage({ filename }: Props) {
-  const imgRef = useRef<HTMLImageElement>(null)
+  const imgRef = useRef<HTMLDivElement>(null)
   const [inView, setInView] = useState(false)
 
   useEffect(() => {
@@ -29,22 +28,22 @@ export default function LazyImage({ filename }: Props) {
     return () => observer.disconnect()
   }, [])
 
-  return inView ? (
-    <img
-      ref={imgRef}
-      src={`/mesh_json/${encodeURIComponent(filename)}/mesh.png`}
-      alt={filename}
-      className="w-full h-full object-cover"
-      onError={(e) => {
-        const target = e.target as HTMLImageElement
-        target.onerror = null
-        target.src = `/mesh_json/${encodeURIComponent(filename)}/mesh_albedo.png`
-      }}
-    />
-  ) : (
+  return (
     <div
       ref={imgRef}
-      className="w-full h-full bg-gray-200 animate-pulse"
+      className="w-full h-full bg-gray-300"
+      style={
+        inView
+          ? {
+              backgroundImage: `url(/vis/${encodeURIComponent(filename)}.png)`,
+              backgroundSize: "400% 200%", // 4x2 sprite
+              backgroundPosition: "0% 100%", // bottom-left tile
+              backgroundRepeat: "no-repeat",
+              backgroundColor: "#ccc",
+              backgroundClip: "content-box",
+            }
+          : undefined
+      }
     />
   )
 }

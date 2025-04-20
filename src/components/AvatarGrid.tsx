@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import LazyImage from "./LazyImage" // ✅ import your lazy loader component
 
 interface AvatarGridProps {
   onSelectAvatar: (filename: string) => void
@@ -43,14 +44,10 @@ export default function AvatarGrid({ onSelectAvatar }: AvatarGridProps) {
             onClick={() => handleSelect(filename)}
           >
             <div className="h-40 rounded-md overflow-hidden bg-gray-100 relative flex items-center justify-center">
-              <img
-                src={`/mesh_json/${encodeURIComponent(filename)}/mesh_albedo.png`}
-                alt={filename}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none"
-                }}
-              />
+              
+              {/* ✅ LazyImage replaces <img> */}
+              <LazyImage filename={filename} />
+
               <span className="absolute bottom-1 left-1 right-1 text-[10px] text-center text-white bg-black/40 px-1 rounded">
                 {filename}
               </span>

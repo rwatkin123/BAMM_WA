@@ -36,7 +36,7 @@ export default function AvatarGrid({ onSelectAvatar }: AvatarGridProps) {
         {files.map((filename) => (
           <div
             key={filename}
-            className={`rounded-xl shadow-sm border transition-all ${
+            className={`rounded-xl bg-blue-50 shadow-sm border transition-all ${
               selected === filename
                 ? "border-blue-500 ring-2 ring-blue-300"
                 : "border-gray-200 hover:shadow-md hover:border-gray-300"

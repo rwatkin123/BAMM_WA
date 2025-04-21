@@ -109,9 +109,9 @@ export default function Canvas({ bvhFile,trigger }: CanvasProps) {
         const source = getSource(sourceModel);
         mixer = retargetModel(source, targetModel);
   
-        const skeletonHelper = new THREE.SkeletonHelper(sourceModel.skeleton.bones[0]);
+        //const skeletonHelper = new THREE.SkeletonHelper(sourceModel.skeleton.bones[0]);
         // scene.add(sourceModel.skeleton.bones[0]);
-        scene.add(skeletonHelper);
+        //scene.add(skeletonHelper);
       }
   
       function animate() {
@@ -164,13 +164,15 @@ function retargetModel(source, targetModel) {
   const mixer = new THREE.AnimationMixer(targetSkin);
   retargetedClip.tracks.forEach((track) => {
     if (track.name.includes('Hips') && track.name.endsWith('.position')) {
-      const firstY = track.values[1];
-      const extraOffset = 0.18; 
-      for (let i = 1; i < track.values.length; i += 3) {
-        track.values[i] -= (firstY + extraOffset); 
+      const values = track.values.slice(); // Clone values
+      const firstY = values[1]; // First keyframe Y
+      for (let i = 1; i < values.length; i += 3) {
+        values[i] -= firstY; // Dynamically center hips at y = 0
       }
+      track.values = values;
     }
   });
+  
   
   
   mixer.clipAction(retargetedClip).play();

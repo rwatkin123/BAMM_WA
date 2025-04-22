@@ -80,19 +80,28 @@ export default function Canvas({ bvhFile,trigger }: CanvasProps) {
         }
       });
 
-      // Shift model down so its lowest point (usually feet) sits on y = 0
-      const box = new THREE.Box3().setFromObject(targetModel.scene);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      
-      // Move model down by the distance from lowest Y point to y=0
-      targetModel.scene.position.y -= box.min.y;
-      
-      // Optional: improve orbit controls centering
-      controls.target.set(center.x, center.y / 2, center.z);
-      controls.update();
+// Compute model bounding box
+const box = new THREE.Box3().setFromObject(targetModel.scene);
+const size = new THREE.Vector3();
+box.getSize(size);
+const center = new THREE.Vector3();
+box.getCenter(center);
+
+// Align feet with floor
+targetModel.scene.position.y -= box.min.y;
+targetModel.scene.position.x -= size.x * 0.5; // shift avatar left
+
+
+// Adjust camera to fit full body
+const modelHeight = size.y;
+const distance = modelHeight * 2.2; // Zoom out based on height
+camera.position.set(center.x - modelHeight * 0.5, modelHeight * 1.1, center.z + distance);
+
+// Target around chest/hip height
+controls.target.set(center.x, modelHeight * 0.55, center.z);
+controls.update();
+
+
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
       scene.add(ambientLight);

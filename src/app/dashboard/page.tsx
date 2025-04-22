@@ -9,11 +9,15 @@ import SidebarNav from "@/components/SidebarNav"
 import axios from "axios"
 import createAndSaveGLB from "@/lib/createMesh"  // ✅ already correct
 import create_glb from "@/components/create_glb"  // ✅ this is the dropdown one
+import ImportPanel from "@/components/ImportPanel";
+import ExportPanel from "@/components/ExportPanel";
+
 
 export default function Home() {
   const [bvhFile, setBvhFile] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [trigger, setTrigger] = useState(false)
+  const [activePanel, setActivePanel] = useState("avatars");
   const [measurements, setMeasurements] = useState<Measurements>({
     height: 175,
     inseam: 80,
@@ -69,21 +73,43 @@ export default function Home() {
         </div>
       ) : (
         <div className="flex-grow flex overflow-hidden">
-          <SidebarNav />
-          <AvatarGrid onSelectAvatar={handleAvatarSelect} />
 
-          <div className="flex-grow flex flex-col overflow-hidden">
-            <div className="flex-grow overflow-hidden">
-              <Canvas bvhFile={bvhFile} trigger={trigger} />
-            </div>
-            <div className="min-h-20 border-t">
-              <Chatbot
-                onFileReceived={handleFileReceived}
-                onSend={handleSend}
-                onAvatarUpdate={handleAvatarUpdate}
-              />
-            </div>
-          </div>
+<SidebarNav onSelect={setActivePanel} />
+
+{activePanel === "avatars" && (
+  <AvatarGrid onSelectAvatar={handleAvatarSelect} className="w-[32rem]" />
+)}
+
+{activePanel === "adjust" && (
+  <div className="w-80 p-4 bg-white overflow-y-auto border-r">
+    <MeasurementControls
+      initialMeasurements={measurements}
+      onChange={handleMeasurementsChange}
+    />
+  </div>
+)}
+{activePanel === "import" && <ImportPanel />}
+{activePanel === "export" && <ExportPanel />}
+
+
+
+<div className="flex-grow flex flex-col overflow-hidden">
+  <div className="flex-grow overflow-hidden relative">
+    <Canvas bvhFile={bvhFile} trigger={trigger} />
+
+    {/* Float Chatbot only over the canvas */}
+    <div className="absolute bottom-0 left-0 w-full px-6 pb-6 pointer-events-none">
+      <div className="pointer-events-auto">
+        <Chatbot
+          onFileReceived={handleFileReceived}
+          onSend={handleSend}
+          onAvatarUpdate={handleAvatarUpdate}
+        />
+      </div>
+    </div>
+  </div>
+</div>
+
         </div>
       )}
     </div>

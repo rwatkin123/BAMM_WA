@@ -7,11 +7,13 @@ import * as SkeletonUtils from "three/addons/utils/SkeletonUtils";
 
 interface CanvasProps {
   bvhFile: string | null; // Received BVH filename
-  trigger?: boolean;  
+  trigger?: boolean;
 }
 
 export default function Canvas({ bvhFile,trigger }: CanvasProps) {
   const sceneRef = useRef<HTMLDivElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
 
   useEffect(() => {
     if (!sceneRef.current) return;
@@ -49,9 +51,10 @@ export default function Canvas({ bvhFile,trigger }: CanvasProps) {
     camera.position.set(1, 2, 3);
   
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMapping = THREE.NoToneMapping; // ✅ This is supported
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
+    
   
     // ⚠️ Clear old canvas if present
     if (sceneRef.current.firstChild) {
@@ -70,6 +73,13 @@ export default function Canvas({ bvhFile,trigger }: CanvasProps) {
       const targetModel: any = await new Promise((resolve, reject) => {
         loader.load('/mesh/mesh.glb', resolve, undefined, reject);
       });
+
+      const audioPath = localStorage.getItem("audio");
+      if (audioPath) {
+        const audio = new Audio(audioPath);
+        audio.play().catch(err => console.warn("Audio playback failed:", err));
+      }
+
   
       scene.add(targetModel.scene);
 
@@ -117,6 +127,27 @@ controls.update();
   
         const source = getSource(sourceModel);
         mixer = retargetModel(source, targetModel);
+
+        // 🔊 Play audio after BVH loads
+// 🔊 Play audio after BVH loads
+// 🔊 Play audio after BVH loads
+
+if (!audioRef.current) {
+  audioRef.current = new Audio('/068_294.wav');
+  audioRef.current.loop = true;
+
+  audioRef.current.addEventListener('canplaythrough', () => {
+    audioRef.current?.play().catch((err) => {
+      console.warn("Audio playback failed:", err);
+    });
+  });
+
+  audioRef.current.load();
+}
+
+
+
+
   
         //const skeletonHelper = new THREE.SkeletonHelper(sourceModel.skeleton.bones[0]);
         // scene.add(sourceModel.skeleton.bones[0]);

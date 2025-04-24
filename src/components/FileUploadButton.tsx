@@ -17,33 +17,51 @@ export default function FileUploadButton({ onFileReceived }: FileUploadProps) {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+  
     try {
-      // 1. Upload audio file to FastAPI
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await axios.post("http://localhost:5050/cretate-a-m", formData, {
-        responseType: "blob", // Important to receive the .bvh as a file
-      });
-
-      const blob = response.data;
-      const filename = `motion_${Date.now()}.bvh`;
-
-      // 2. Upload to Next.js API route
-      await axios.post("/api/save-bvh", blob, {
+      console.log("⏳ Saving audio locally...");
+      const audioFilename = `audio_${Date.now()}.wav`;
+      const arrayBuffer = await file.arrayBuffer();
+  
+      // Save the audio file locally to public folder (Next.js API route)
+      await fetch("/api/save-bvh", {
+        method: "POST",
+        body: arrayBuffer,
         headers: {
-          "Content-Type": "application/octet-stream",
-          "X-Filename": filename,
+          "Content-Type": "audio/wav",
+          "X-Filename": audioFilename,
         },
       });
-
-      // 3. Notify parent with the new filename
-      onFileReceived(`${filename}`);
+  
+      console.log("🎧 Audio saved, now sending to backend...");
+  
+      const formData = new FormData();
+      formData.append("wav", file);
+  
+      const response = await axios.post("https://audio-motion.ngrok.app/generate-motion/", formData, {
+        responseType: "blob",
+      });
+  
+      const bvhBlob = response.data;
+      const bvhFilename = `motion_${Date.now()}.bvh`;
+  
+      await fetch("/api/save-bvh", {
+        method: "POST",
+        body: await bvhBlob.arrayBuffer(),
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Filename": bvhFilename,
+        },
+      });
+  
+      // ✅ Notify parent to trigger canvas + audio
+      onFileReceived(`/${bvhFilename}`);
+      localStorage.setItem("audio", `/${audioFilename}`); // store for Canvas to pick up
     } catch (err) {
-      console.error("File upload error:", err);
+      console.error("❌ Upload error:", err);
     }
   };
+  
 
   return (
     <>

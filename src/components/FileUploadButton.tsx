@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Paperclip } from "lucide-react";
 
 interface FileUploadProps {
-  onFileReceived: (filename: string) => void;
+  onFileReceived: (bvhPath: string) => void;
 }
 
 export default function FileUploadButton({ onFileReceived }: FileUploadProps) {
@@ -17,14 +17,13 @@ export default function FileUploadButton({ onFileReceived }: FileUploadProps) {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-  
+
     try {
-      console.log("⏳ Saving audio locally...");
       const audioFilename = `audio_${Date.now()}.wav`;
       const arrayBuffer = await file.arrayBuffer();
-  
-      // Save the audio file locally to public folder (Next.js API route)
-      await fetch("/api/save-bvh", {
+
+      // ✅ Save audio to public folder
+      await fetch("/api/save-audio", {
         method: "POST",
         body: arrayBuffer,
         headers: {
@@ -32,19 +31,24 @@ export default function FileUploadButton({ onFileReceived }: FileUploadProps) {
           "X-Filename": audioFilename,
         },
       });
-  
-      console.log("🎧 Audio saved, now sending to backend...");
-  
+
+      // 📌 Save path to localStorage so Canvas can play it
+      localStorage.setItem("audio", `/${audioFilename}`);
+
+      // 🎯 Send to FastAPI backend
       const formData = new FormData();
       formData.append("wav", file);
-  
-      const response = await axios.post("https://audio-motion.ngrok.app/generate-motion/", formData, {
-        responseType: "blob",
-      });
-  
+
+      const response = await axios.post(
+        "https://audio-motion.ngrok.app/generate-motion/",
+        formData,
+        { responseType: "blob" }
+      );
+
       const bvhBlob = response.data;
       const bvhFilename = `motion_${Date.now()}.bvh`;
-  
+
+      // ✅ Save BVH to public folder
       await fetch("/api/save-bvh", {
         method: "POST",
         body: await bvhBlob.arrayBuffer(),
@@ -53,15 +57,13 @@ export default function FileUploadButton({ onFileReceived }: FileUploadProps) {
           "X-Filename": bvhFilename,
         },
       });
-  
-      // ✅ Notify parent to trigger canvas + audio
+
+      // 🎬 Trigger canvas update
       onFileReceived(`/${bvhFilename}`);
-      localStorage.setItem("audio", `/${audioFilename}`); // store for Canvas to pick up
     } catch (err) {
-      console.error("❌ Upload error:", err);
+      console.error("❌ Upload failed:", err);
     }
   };
-  
 
   return (
     <>
@@ -72,14 +74,7 @@ export default function FileUploadButton({ onFileReceived }: FileUploadProps) {
         onChange={handleFileChange}
         className="hidden"
       />
-
-      <Button
-        type="button"
-        size="icon"
-        variant="ghost"
-        className="rounded-full"
-        onClick={handleAttachClick}
-      >
+      <Button type="button" size="icon" variant="ghost" className="rounded-full" onClick={handleAttachClick}>
         <Paperclip className="h-4 w-4" />
         <span className="sr-only">Attach file</span>
       </Button>

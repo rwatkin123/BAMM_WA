@@ -128,14 +128,26 @@ controls.update();
 // 🔊 Play audio after BVH loads
 // 🔊 Play audio after BVH loads
 
-
 const audioPath = localStorage.getItem("audio");
 const audioEnabled = localStorage.getItem("audio_enabled") === "true";
 
-// Only set up audio if it's enabled, not already playing
 if (audioEnabled && audioPath && !audioRef.current) {
+  let playCount = 0;
+
   audioRef.current = new Audio(audioPath);
-  audioRef.current.loop = true;
+
+  const handleEnded = () => {
+    playCount += 1;
+    if (playCount < 2) {
+      audioRef.current?.play().catch((err) => {
+        console.warn("Audio replay failed:", err);
+      });
+    } else {
+      audioRef.current?.removeEventListener("ended", handleEnded);
+    }
+  };
+
+  audioRef.current.addEventListener("ended", handleEnded);
 
   audioRef.current.addEventListener("canplaythrough", () => {
     audioRef.current?.play().catch((err) => {

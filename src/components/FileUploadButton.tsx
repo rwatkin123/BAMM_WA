@@ -18,24 +18,25 @@ export default function FileUploadButton({ onFileReceived }: FileUploadProps) {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+  
     setLoading(true);
     try {
       const formData = new FormData();
       formData.append("wav", file);
-
+  
       const response = await axios.post("https://audio-motion.ngrok.app/generate-motion/", formData);
-
-      const { bvh_url, audio_url } = response.data;
-
-      localStorage.setItem("audio", audio_url);
-      onFileReceived(bvh_url, audio_url);
+      const { bvh_url } = response.data;
+  
+      const localAudioURL = URL.createObjectURL(file); // 🎯 create a local reference to uploaded file
+  
+      onFileReceived(bvh_url, localAudioURL); // use this instead of backend's audio_url
     } catch (err) {
       console.error("❌ Upload failed:", err);
     } finally {
       setLoading(false);
     }
   };
+  
 
   return (
     <>

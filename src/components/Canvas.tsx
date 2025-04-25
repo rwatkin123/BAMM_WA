@@ -74,14 +74,7 @@ export default function Canvas({ bvhFile,trigger }: CanvasProps) {
         loader.load('/mesh/mesh.glb', resolve, undefined, reject);
       });
 
-      const audioPath = localStorage.getItem("audio");
-      const audioEnabled = localStorage.getItem("audio_enabled") === "true";
-      
-      if (audioEnabled && audioPath) {
-        const audio = new Audio(audioPath);
-        audio.play().catch(err => console.warn("Audio playback failed:", err));
-      }
-      
+
 
   
       scene.add(targetModel.scene);
@@ -135,11 +128,16 @@ controls.update();
 // 🔊 Play audio after BVH loads
 // 🔊 Play audio after BVH loads
 
-if (!audioRef.current) {
-  audioRef.current = new Audio('/068_294.wav');
+
+const audioPath = localStorage.getItem("audio");
+const audioEnabled = localStorage.getItem("audio_enabled") === "true";
+
+// Only set up audio if it's enabled, not already playing
+if (audioEnabled && audioPath && !audioRef.current) {
+  audioRef.current = new Audio(audioPath);
   audioRef.current.loop = true;
 
-  audioRef.current.addEventListener('canplaythrough', () => {
+  audioRef.current.addEventListener("canplaythrough", () => {
     audioRef.current?.play().catch((err) => {
       console.warn("Audio playback failed:", err);
     });

@@ -71,6 +71,8 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
       const data = response.data;
 
       if (data.filenames) {
+        localStorage.removeItem("audio_enabled"); // 🚫 prevent audio from playing
+        localStorage.removeItem("audio");   
         onFileReceived(`https://handy-lamb-enough.ngrok.app/mesh/public/${data.filenames}`);
       } else {
         console.error("No BVH files returned from backend.");

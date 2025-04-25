@@ -75,10 +75,13 @@ export default function Canvas({ bvhFile,trigger }: CanvasProps) {
       });
 
       const audioPath = localStorage.getItem("audio");
-      if (audioPath) {
+      const audioEnabled = localStorage.getItem("audio_enabled") === "true";
+      
+      if (audioEnabled && audioPath) {
         const audio = new Audio(audioPath);
         audio.play().catch(err => console.warn("Audio playback failed:", err));
       }
+      
 
   
       scene.add(targetModel.scene);

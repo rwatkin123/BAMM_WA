@@ -91,7 +91,7 @@ export default function ThreeCanvas() {
       { name: "King", modelPath: "/assets/king.glb", scale: 2.8, animation: "pl_king_face01_skill_b" },
       { name: "Venom", modelPath: "/assets/venom.glb", scale: 2.0, animation: "103541_Shackle" },
       { name: "Torch", modelPath: "/assets/human_torch.glb", scale: 3.2, animation: "HoverToFull" },
-      { name: "Batman", modelPath: "/assets/batman.glb", scale: 2.5, animation: "Batman_Emote_CrossArms" }
+      //{ name: "Batman", modelPath: "/assets/batman.glb", scale: 2.5, animation: "Batman_Emote_CrossArms" }
     ];
 
     let currentModel: THREE.Object3D | null = null;

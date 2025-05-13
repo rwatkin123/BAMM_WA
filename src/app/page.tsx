@@ -1,101 +1,116 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect } from "react";
+import dynamic from "next/dynamic";
+import "./styles.css"; // ✅ relative to page.tsx
+const ThreeCanvas = dynamic(() => import("../components/ThreeCanvas"), { ssr: false });
+
+export default function Page() {
+
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <>
+<div id="model-viewer">
+  <ThreeCanvas />
+</div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      <div className="container">
+        <nav className="navbar">
+          <div className="logo">BAMM</div>
+          <div className="nav-links">
+            <a href="#features">Features</a>
+            <a href="#models">Models</a>
+            <a href="#contact">Contact</a>
+          </div>
+        </nav>
+
+        <main>
+          <section className="hero">
+            <div className="hero-content">
+              <h1>BAMM</h1>
+              <h2>3D Model Generation</h2>
+              <p>
+                Experience the future of 3D modeling with our cutting-edge technology. Transform your
+                ideas into stunning 3D models with unprecedented ease and quality.
+              </p>
+              <button className="cta-button">Get Started</button>
+            </div>
+            <div className="model-info">
+              <span className="model-name">Loading...</span>
+              <span className="model-description">Experience our high-quality 3D models</span>
+            </div>
+          </section>
+
+          <section id="features" className="features">
+            <h2>Key Features</h2>
+            <div className="feature-grid">
+              <div className="feature-card">
+                <h3>High Quality</h3>
+                <p>Photorealistic 3D models with detailed textures and animations</p>
+              </div>
+              <div className="feature-card">
+                <h3>Easy Integration</h3>
+                <p>Seamlessly integrate our models into your projects</p>
+              </div>
+              <div className="feature-card">
+                <h3>Customizable</h3>
+                <p>Modify and customize models to fit your needs</p>
+              </div>
+              <div className="feature-card">
+                <h3>Optimized</h3>
+                <p>Performance-optimized models for smooth rendering</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="models" className="models">
+            <h2>Featured Models</h2>
+            <div className="model-grid">
+              <div className="model-card">
+                <h3>King</h3>
+                <p>Majestic character with dynamic animations</p>
+              </div>
+              <div className="model-card">
+                <h3>Venom</h3>
+                <p>Powerful and menacing presence</p>
+              </div>
+              <div className="model-card">
+                <h3>Human Torch</h3>
+                <p>Flame-powered hero with spectacular effects</p>
+              </div>
+              <div className="model-card">
+                <h3>Batman</h3>
+                <p>Dark knight with iconic poses</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="contact" className="contact">
+            <h2>Get in Touch</h2>
+            <p>Ready to transform your ideas into 3D reality?</p>
+            <button className="cta-button">Contact Us</button>
+          </section>
+        </main>
+
+        <footer>
+          <div className="footer-content">
+            <div className="footer-logo">BAMM</div>
+            <div className="footer-links">
+              <a href="#features">Features</a>
+              <a href="#models">Models</a>
+              <a href="#contact">Contact</a>
+            </div>
+            <div className="footer-social">
+              <a href="#" className="social-link">Twitter</a>
+              <a href="#" className="social-link">LinkedIn</a>
+              <a href="#" className="social-link">GitHub</a>
+            </div>
+          </div>
+          <div className="footer-bottom">
+            <p>&copy; 2024 BAMM. All rights reserved.</p>
+          </div>
+        </footer>
+      </div>
+    </>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import "./styles.css"; // ✅ relative to page.tsx
 const ThreeCanvas = dynamic(() => import("../components/ThreeCanvas"), { ssr: false });
 
@@ -33,7 +34,9 @@ export default function Page() {
                 Experience the future of 3D modeling with our cutting-edge technology. Transform your
                 ideas into stunning 3D models with unprecedented ease and quality.
               </p>
-              <button className="cta-button">Get Started</button>
+              <Link href="/dashboard">
+                <button className="cta-button">Get Started</button>
+              </Link>
             </div>
             <div className="model-info">
               <span className="model-name">Loading...</span>

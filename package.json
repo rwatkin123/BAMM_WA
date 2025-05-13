@@ -4,8 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "git lfs install && git lfs pull",
-
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",

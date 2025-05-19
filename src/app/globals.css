@@ -71,3 +71,17 @@ body {
   }
 }
 
+
+@layer base {
+  input,
+  textarea,
+  select {
+    @apply text-gray-800 bg-white border border-gray-300 rounded px-3 py-2 placeholder-gray-400;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    @apply outline-none ring-2 ring-primary;
+  }
+}

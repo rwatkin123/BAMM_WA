@@ -103,16 +103,16 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
               onClick={() => removeTextField(index)}
               disabled={textFields.length <= 1}
             >
-              <Minus className="h-4 w-4" />
-            </Button>
+<Minus className="h-4 w-4 text-gray-600 hover:text-gray-800" />
+</Button>
             <Button
               type="button"
               variant="outline"
               size="icon"
               onClick={() => addTextField(index)}
             >
-              <Plus className="h-4 w-4" />
-            </Button>
+<Plus className="h-4 w-4 text-gray-600 hover:text-gray-800" />
+</Button>
           </div>
 
           {/* Text input */}

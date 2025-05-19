@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Minus, Plus } from "lucide-react";
+import { Send, Minus, Plus, Trash2 } from "lucide-react";
 import axios from 'axios';
 import create_glb from '@components/create_glb';
 import FileUploadButton from "./FileUploadButton";
@@ -42,7 +42,6 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
     if (!textFields) return;
 
     onSend();
-    setTextFields([""]);
     const dataArray = [...textFields];
     setSubmittedData(dataArray);
 
@@ -85,60 +84,58 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
   return (
     <form
       onSubmit={handleSubmit}
-      className="w-full max-w-4xl mx-auto bg-white/90 shadow-2xl backdrop-blur-md 
-                 border border-gray-200 rounded-2xl px-5 py-4 flex flex-col gap-4"
+      className="w-full max-w-lg bg-white/80 shadow-2xl border border-gray-100 rounded-2xl px-8 py-7 flex flex-col gap-6 fixed bottom-8 right-8 z-50 backdrop-blur-lg"
+      style={{boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)'}}
     >
-      <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-        <span className="text-lg">🎬</span> Generate Motion Prompt
+      <div className="flex flex-col gap-1 mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🎬</span>
+          <span className="font-bold text-lg text-gray-800">Motion Chatbot</span>
+        </div>
+        <span className="text-xs text-gray-500">Describe the motion you want to generate. Add multiple prompts for batch generation.</span>
       </div>
 
-      {textFields.map((text, index) => (
-        <div key={index} className="flex items-center gap-2 w-full">
-          {/* +/- buttons */}
-          <div className="flex gap-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => removeTextField(index)}
-              disabled={textFields.length <= 1}
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => addTextField(index)}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Text input */}
-          <Input
-            value={text}
-            onChange={(e) => updateTextField(index, e.target.value)}
-            placeholder={`Describe motion #${index + 1}`}
-            className="flex-grow rounded-lg border-gray-300 shadow-sm focus:ring-2 focus:ring-blue-500"
-          />
-
-          {/* Only show upload + generate on first row */}
-          {index === 0 && (
-            <>
-              <FileUploadButton onFileReceived={onFileReceived} />
-              <Button
-                type="submit"
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 
-                           text-white px-4 py-2 rounded-md flex items-center gap-2 shadow-md transition"
+      <div className="flex flex-col gap-3">
+        {textFields.map((text, index) => (
+          <div key={index} className="flex items-center gap-2 bg-white/90 border border-gray-100 rounded-lg px-3 py-2 shadow-sm relative">
+            <Input
+              value={text}
+              onChange={(e) => updateTextField(index, e.target.value)}
+              placeholder={`Describe motion #${index + 1}`}
+              className="flex-grow border-none bg-transparent focus:ring-0 text-sm px-0"
+            />
+            {textFields.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeTextField(index)}
+                className="ml-2 text-gray-300 hover:text-red-500 transition"
+                aria-label="Remove prompt"
               >
-                <Send className="h-4 w-4" />
-                Generate
-              </Button>
-            </>
-          )}
-        </div>
-      ))}
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => addTextField(textFields.length - 1)}
+        className="flex items-center gap-1 self-start text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded transition"
+      >
+        <Plus className="w-4 h-4" /> Add prompt
+      </button>
+
+      <div className="flex gap-2 mt-2">
+        <FileUploadButton onFileReceived={onFileReceived} />
+        <Button
+          type="submit"
+          className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-2 rounded-lg flex items-center justify-center gap-2 shadow-md transition text-base font-semibold border-none"
+        >
+          <Send className="h-5 w-5" />
+          Generate
+        </Button>
+      </div>
     </form>
   );
 }

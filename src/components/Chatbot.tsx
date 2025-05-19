@@ -94,7 +94,6 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
         </div>
         <span className="text-xs text-gray-500">Describe the motion you want to generate. Add multiple prompts for batch generation.</span>
       </div>
-
       <div className="flex flex-col gap-3">
         {textFields.map((text, index) => (
           <div key={index} className="flex items-center gap-2 bg-white/90 border border-gray-100 rounded-lg px-3 py-2 shadow-sm relative">
@@ -114,6 +113,7 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
                 <Trash2 className="w-4 h-4" />
               </button>
             )}
+
           </div>
         ))}
       </div>

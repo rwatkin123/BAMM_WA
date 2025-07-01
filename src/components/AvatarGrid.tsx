@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import LazyImage from "./LazyImage";
+import { CheckCircle2 } from "lucide-react";
 
 interface AvatarGridProps {
   onSelectAvatar: (filename: string) => void;
@@ -32,27 +33,31 @@ export default function AvatarGrid({ onSelectAvatar, className = "w-[32rem]" }: 
   };
 
   return (
-    <div className={`${className} bg-white border-r h-full overflow-y-auto p-6 space-y-4`}>
+    <div className={`${className} bg-transparent h-full overflow-y-auto p-6 space-y-4`}>
       <div className="grid grid-cols-2 gap-6">
         {files.map((filename) => (
           <div
             key={filename}
-            className={`rounded-xl bg-blue-50 shadow-md border transition-all cursor-pointer ${
-              selected === filename
-                ? "border-blue-500 ring-2 ring-blue-300"
-                : "border-gray-200 hover:shadow-lg hover:border-gray-300"
-            }`}
+            className={`relative rounded-xl bg-white shadow-sm border border-gray-100 transition-all cursor-pointer hover:shadow-lg hover:scale-[1.025] active:scale-100 duration-200
+              ${selected === filename ? "ring-2 ring-blue-400 border-blue-400" : "hover:border-gray-300"}
+            `}
             onClick={() => handleSelect(filename)}
           >
+            {selected === filename && (
+              <div className="absolute top-2 right-2 z-10">
+                <CheckCircle2 className="w-6 h-6 text-blue-500 drop-shadow" />
+              </div>
+            )}
             <div className="aspect-[3/4] relative rounded-t-xl overflow-hidden">
               <LazyImage filename={filename} />
             </div>
-            <div className="text-sm text-center px-3 py-3 font-semibold text-gray-700 truncate">
+            <div className="text-xs text-center px-2 py-2 font-medium text-gray-500 truncate">
               {filename}
             </div>
           </div>
         ))}
       </div>
+      <div className="my-2 border-t border-dashed border-gray-200" />
       <div className="text-center text-xs text-gray-400">Scroll for more</div>
     </div>
   );

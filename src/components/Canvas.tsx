@@ -6,52 +6,130 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 import { Slider } from "./ui/slider";
 import create_glb from "./create_glb";
+import Chatbot from "./Chatbot";
+import { useCharacterControls } from "@/contexts/CharacterControlsContext";
 
 interface CanvasProps {
   bvhFile: string | null;
   trigger?: boolean;
   selectedCharacters: string[];
+  isPlaying?: boolean;
+  onPlayStateChange?: (isPlaying: boolean) => void;
+  onProgressChange?: (progress: number) => void;
+  onDurationChange?: (duration: number) => void;
+  onTrimRangeChange?: (trimRange: number[]) => void;
+  multiCharacterMode?: boolean;
+  onMultiCharacterModeChange?: (mode: boolean) => void;
+  onFileReceived?: (filename: string) => void;
+  onSend?: () => void;
+  onAvatarUpdate?: () => void;
 }
 
 export default function Canvas({ 
   bvhFile, 
   trigger, 
-  selectedCharacters = []
+  selectedCharacters = [],
+  isPlaying,
+  onPlayStateChange,
+  onProgressChange,
+  onDurationChange,
+  onTrimRangeChange,
+  multiCharacterMode,
+  onMultiCharacterModeChange,
+  onFileReceived,
+  onSend,
+  onAvatarUpdate
 }: CanvasProps) {
+
   const sceneRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mixersRef = useRef<THREE.AnimationMixer[]>([]);
   const clockRef = useRef(new THREE.Clock());
 
-  const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [trimRange, setTrimRange] = useState([0, 0]);
   const [loadingCharacters, setLoadingCharacters] = useState(false);
 
-  const isPlayingRef = useRef(isPlaying);
-  isPlayingRef.current = isPlaying;
+  // Use external isPlaying if provided, otherwise use internal state
+  const [internalIsPlaying, setInternalIsPlaying] = useState(false);
+  const currentIsPlaying = isPlaying !== undefined ? isPlaying : internalIsPlaying;
+  
+  const isPlayingRef = useRef(currentIsPlaying);
+  isPlayingRef.current = currentIsPlaying;
   const trimRangeRef = useRef(trimRange);
   trimRangeRef.current = trimRange;
 
-  // --- Character transform controls ---
-  const [characterScale, setCharacterScale] = useState(1.0); // 0.5 - 3.0
-  const [characterRotation, setCharacterRotation] = useState(0); // degrees, 0-360
 
-  // --- Skinning options ---
-  const [wireframe, setWireframe] = useState(false);
-  const [showSkeleton, setShowSkeleton] = useState(false);
 
   // Store references to loaded models for transform updates
   const modelsRef = useRef<any[]>([]);
   // Store skeleton helpers
   const skeletonHelpersRef = useRef<any[]>([]);
+  // Store reference to THREE.js scene
+  const sceneRef_three = useRef<THREE.Scene | null>(null);
+
+  // --- Character transform controls (Use context) ---
+  const {
+    characterScale,
+    setCharacterScale,
+    characterRotation,
+    setCharacterRotation,
+    wireframe,
+    setWireframe,
+    showSkeleton,
+    setShowSkeleton
+  } = useCharacterControls();
 
   useEffect(() => {
     if (duration > 0) {
       setTrimRange([0, duration]);
+      if (onDurationChange) {
+        onDurationChange(duration);
+      }
     }
-  }, [duration]);
+  }, [duration, onDurationChange]);
+
+  // Handle external play state changes
+  useEffect(() => {
+    if (isPlaying !== undefined) {
+      const mixers = mixersRef.current;
+      
+      if (mixers.length > 0) {
+        if (isPlaying) {
+          // PLAY: Start all mixers
+          console.log("Starting mixers from external control");
+          mixers.forEach((mixer, index) => {
+            // If mixer is outside trim range, reset to start
+            if (mixer.time < trimRange[0] || mixer.time >= trimRange[1]) {
+              mixer.setTime(trimRange[0]);
+            }
+            // Set time scale to 1 to play
+            mixer.timeScale = 1;
+          });
+          
+          // Handle audio
+          if (audioRef.current) {
+            if (audioRef.current.currentTime < trimRange[0] || audioRef.current.currentTime >= trimRange[1]) {
+              audioRef.current.currentTime = trimRange[0];
+            }
+            audioRef.current.play().catch(e => console.log("Audio play failed:", e));
+          }
+        } else {
+          // PAUSE: Stop all mixers
+          console.log("Pausing mixers from external control");
+          mixers.forEach((mixer, index) => {
+            mixer.timeScale = 0;
+          });
+          
+          // Handle audio
+          if (audioRef.current) {
+            audioRef.current.pause();
+          }
+        }
+      }
+    }
+  }, [isPlaying, trimRange]);
 
   // Helper function to normalize character scale
   const normalizeCharacterScale = (model: any, targetHeight: number = 2.0) => {
@@ -102,8 +180,11 @@ export default function Canvas({
 
     const clock = clockRef.current;
     const scene = new THREE.Scene();
+    sceneRef_three.current = scene;
     scene.background = new THREE.Color("#f8fafc");
     scene.fog = new THREE.Fog("#f8fafc", 3, 25);
+    
+
 
     const textureLoader = new THREE.TextureLoader();
     const gridTexture = textureLoader.load('/textures/grid.png');
@@ -164,6 +245,7 @@ export default function Canvas({
 
           scene.add(targetModel.scene);
           modelsRef.current = [targetModel.scene];
+
 
           targetModel.scene.traverse((child: any) => {
             if (child.isSkinnedMesh) {
@@ -228,6 +310,7 @@ export default function Canvas({
 
             scene.add(targetModel.scene);
             modelsRef.current.push(targetModel.scene);
+
 
             targetModel.scene.traverse((child: any) => {
               if (child.isSkinnedMesh) {
@@ -320,7 +403,11 @@ export default function Canvas({
           if (currentTime >= trimRangeRef.current[1]) {
             mixers.forEach(mixer => mixer.setTime(trimRangeRef.current[1]));
             if (audioRef.current) audioRef.current.currentTime = trimRangeRef.current[1];
-            setIsPlaying(false);
+            if (onPlayStateChange) {
+              onPlayStateChange(false);
+            } else {
+              setInternalIsPlaying(false);
+            }
             mixers.forEach(mixer => mixer.timeScale = 0);
             if (audioRef.current) audioRef.current.pause();
           } else {
@@ -352,7 +439,7 @@ export default function Canvas({
     };
   }, [selectedCharacters, bvhFile, trigger, showSkeleton]);
 
-  // Update scale, rotation, and skinning options when controls change
+  // Update scale, rotation, and skinning options when controls change (RESTORED: Original working code)
   useEffect(() => {
     modelsRef.current.forEach(model => {
       if (model) {
@@ -368,6 +455,37 @@ export default function Canvas({
       }
     });
   }, [characterScale, characterRotation, wireframe]);
+
+  // Update skeleton helpers when showSkeleton changes (RESTORED: Original working code)
+  useEffect(() => {
+    const scene = sceneRef_three.current;
+    if (!scene) return;
+
+    // Remove existing skeleton helpers
+    skeletonHelpersRef.current.forEach(helper => {
+      if (helper.parent) {
+        helper.parent.remove(helper);
+      }
+    });
+    skeletonHelpersRef.current = [];
+
+    // Add skeleton helpers if enabled
+    if (showSkeleton) {
+      modelsRef.current.forEach(model => {
+        if (model) {
+          model.traverse((child: any) => {
+            if (child.isSkinnedMesh) {
+              const helper = new THREE.SkeletonHelper(child);
+              scene.add(helper);
+              skeletonHelpersRef.current.push(helper);
+            }
+          });
+        }
+      });
+    }
+  }, [showSkeleton]);
+
+
 
   // 🔧 FIXED Play/Pause Handler with Debug Logging
   const handlePlayPause = () => {
@@ -421,8 +539,12 @@ export default function Canvas({
     }
     
     // Toggle play state
-    setIsPlaying(!isPlaying);
-    console.log("Play state changed to:", !isPlaying);
+    if (onPlayStateChange) {
+      onPlayStateChange(!currentIsPlaying);
+    } else {
+      setInternalIsPlaying(!currentIsPlaying);
+    }
+    console.log("Play state changed to:", !currentIsPlaying);
   };
 
   const handleSeek = (newTime: number) => {
@@ -465,179 +587,105 @@ export default function Canvas({
         </div>
       )}
       
-      {/* 🔧 FIXED Controls Section */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 20,
-          left: 20,
-          right: 20,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          zIndex: 1000, // High z-index to ensure it's on top
-          pointerEvents: "none", // Disable pointer events on container
-        }}
-      >
-        {/* Slider container */}
-        <div 
-          style={{ 
-            position: "relative", 
-            width: "100%", 
-            height: 20,
-            pointerEvents: "auto" // Enable pointer events on slider
-          }}
-        >
-          <Slider
-            value={trimRange}
-            max={duration}
-            step={0.01}
-            onValueChange={handleTrimRangeChange}
-            className="w-full absolute"
-          />
-          <Slider
-            value={[progress]}
-            min={trimRange[0]}
-            max={trimRange[1]}
-            step={0.01}
-            onValueChange={(value) => handleSeek(value[0])}
-            className="w-full absolute"
-            trackClassName="bg-transparent"
-          />
-        </div>
-        
-        {/* Controls container */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginTop: 10,
-            pointerEvents: "auto", // Enable pointer events on controls
-            zIndex: 1001, // Even higher z-index
-          }}
-        >
-          {/* 🔧 FIXED Play/Pause Button */}
-          <button
-            onClick={handlePlayPause}
-            disabled={loadingCharacters}
-            style={{
-              padding: "8px 16px",
-              backgroundColor: loadingCharacters ? "#94a3b8" : "#3b82f6",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-              cursor: loadingCharacters ? "not-allowed" : "pointer",
-              fontSize: "14px",
-              fontWeight: "500",
-              minWidth: "80px", // Minimum width
-              minHeight: "36px", // Minimum height
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1002, // Highest z-index
-              pointerEvents: "auto", // Explicitly enable clicks
-              boxSizing: "border-box", // Ensure proper sizing
-            }}
-            onMouseEnter={(e) => {
-              if (!loadingCharacters) {
-                e.currentTarget.style.backgroundColor = "#2563eb";
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!loadingCharacters) {
-                e.currentTarget.style.backgroundColor = "#3b82f6";
-              }
-            }}
-          >
-            {isPlaying ? "Pause" : "Play"}
-          </button>
+      {/* 🆕 REMOVED: Controls moved to dashboard */}
 
-          <span 
-            className="text-sm"
-            style={{ 
-              pointerEvents: "none", // Text doesn't interfere
-              userSelect: "none" 
-            }}
-          >
-            {progress.toFixed(2)}s / {duration.toFixed(2)}s | Trim:{" "}
-            {trimRange[0].toFixed(2)}s - {trimRange[1].toFixed(2)}s
-          </span>
+      {/* --- Smart Card Container --- */}
+      <div className="absolute top-6 right-6 bottom-6 flex flex-col gap-3 z-50">
+        {/* Card 1: Credits & Tokens */}
+        <div className="w-80 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-xl">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🪙</span>
+              <span className="font-semibold text-sm text-gray-800">Credits</span>
+            </div>
+            <button className="flex items-center gap-1 px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs font-medium transition-colors">
+              <span className="text-sm">🪙</span>
+              Refill
+            </button>
+          </div>
           
-          {selectedCharacters.length > 1 && !loadingCharacters && (
-            <span 
-              className="text-sm text-green-600"
-              style={{ 
-                pointerEvents: "none", // Text doesn't interfere
-                userSelect: "none" 
-              }}
-            >
-              • {selectedCharacters.length} synchronized characters
-            </span>
-          )}
+          <div className="space-y-3">
+            {/* Token Balance */}
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-600">Available Tokens</span>
+              <span className="text-sm font-semibold text-gray-800">1,247</span>
+            </div>
+            
+            {/* Motion Generation Capacity */}
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-600">Motion Generations</span>
+              <span className="text-sm font-semibold text-blue-600">~24 remaining</span>
+            </div>
+            
+            {/* Progress Bar */}
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-green-500 to-blue-500 h-full rounded-full transition-all duration-300"
+                style={{ width: '78%' }}
+              ></div>
+            </div>
+            
+            {/* Usage Stats */}
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>Used: 342 tokens</span>
+              <span>Total: 1,589 tokens</span>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* --- Character Transform & Skinning Controls --- */}
-      <div
-        style={{
-          position: "absolute",
-          top: 20,
-          right: 20,
-          zIndex: 1100,
-          background: "rgba(255,255,255,0.95)",
-          borderRadius: 8,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-          padding: 16,
-          minWidth: 220,
-          pointerEvents: "auto",
-        }}
-      >
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontWeight: 500 }}>Character Size</label>
-          <Slider
-            value={[characterScale]}
-            min={0.5}
-            max={3.0}
-            step={0.01}
-            onValueChange={([v]) => setCharacterScale(v)}
-            className="w-full"
-          />
-          <span style={{ fontSize: 12 }}>{characterScale.toFixed(2)}x</span>
+
+
+
+
+        {/* Card 3: Character Mode Toggle */}
+        <div className="w-80 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-xl">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">👥</span>
+              <span className="font-semibold text-sm text-gray-800">Character Mode</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-center">
+            <button
+              onClick={() => onMultiCharacterModeChange && onMultiCharacterModeChange(!multiCharacterMode)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg shadow-md transition-all text-sm font-medium
+                ${multiCharacterMode 
+                  ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                  : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'
+                }`}
+            >
+              {multiCharacterMode ? (
+                <>
+                  <span className="text-base">👥</span>
+                  Multi Character
+                </>
+              ) : (
+                <>
+                  <span className="text-base">👤</span>
+                  Single Character
+                </>
+              )}
+            </button>
+          </div>
+          
+          <div className="mt-3 text-xs text-gray-500 text-center">
+            {multiCharacterMode 
+              ? "Select multiple characters to animate together" 
+              : "Select one character at a time"
+            }
+          </div>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontWeight: 500 }}>Character Rotation</label>
-          <Slider
-            value={[characterRotation]}
-            min={0}
-            max={360}
-            step={1}
-            onValueChange={([v]) => setCharacterRotation(v)}
-            className="w-full"
-          />
-          <span style={{ fontSize: 12 }}>{characterRotation}&deg;</span>
-        </div>
-        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={wireframe}
-            onChange={e => setWireframe(e.target.checked)}
-            id="wireframeToggle"
-          />
-          <label htmlFor="wireframeToggle" style={{ fontWeight: 500, cursor: "pointer" }}>
-            Wireframe
-          </label>
-        </div>
-        <div style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={showSkeleton}
-            onChange={e => setShowSkeleton(e.target.checked)}
-            id="skeletonToggle"
-          />
-          <label htmlFor="skeletonToggle" style={{ fontWeight: 500, cursor: "pointer" }}>
-            Show Skeleton
-          </label>
+
+        {/* Card 3: Motion Chatbot - Flex to align bottom with play card */}
+        <div className="w-80 flex-1 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl backdrop-blur-lg transition-all duration-300 hover:shadow-xl overflow-hidden">
+          {onFileReceived && onSend && onAvatarUpdate && (
+            <Chatbot
+              onFileReceived={onFileReceived}
+              onSend={onSend}
+              onAvatarUpdate={onAvatarUpdate}
+            />
+          )}
         </div>
       </div>
     </div>

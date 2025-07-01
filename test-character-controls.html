@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Character Controls Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .control-group {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .slider {
+            width: 200px;
+            margin: 10px 0;
+        }
+        .checkbox {
+            margin: 5px 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Character Controls Test</h1>
+    
+    <div class="control-group">
+        <h3>Wireframe & Skeleton</h3>
+        <label class="checkbox">
+            <input type="checkbox" id="wireframe"> Wireframe
+        </label>
+        <label class="checkbox">
+            <input type="checkbox" id="skeleton"> Skeleton
+        </label>
+    </div>
+    
+    <div class="control-group">
+        <h3>Size</h3>
+        <input type="range" id="size" class="slider" min="0.5" max="3.0" step="0.01" value="1.0">
+        <span id="sizeValue">1.00x</span>
+    </div>
+    
+    <div class="control-group">
+        <h3>Rotation</h3>
+        <input type="range" id="rotation" class="slider" min="0" max="360" step="1" value="0">
+        <span id="rotationValue">0°</span>
+    </div>
+    
+    <div class="control-group">
+        <h3>Current Values</h3>
+        <pre id="currentValues"></pre>
+    </div>
+
+    <script>
+        const characterControls = {
+            wireframe: false,
+            showSkeleton: false,
+            characterScale: 1.0,
+            characterRotation: 0,
+        };
+
+        function updateDisplay() {
+            document.getElementById('currentValues').textContent = JSON.stringify(characterControls, null, 2);
+            console.log('Character controls updated:', characterControls);
+        }
+
+        // Wireframe
+        document.getElementById('wireframe').addEventListener('change', (e) => {
+            characterControls.wireframe = e.target.checked;
+            updateDisplay();
+        });
+
+        // Skeleton
+        document.getElementById('skeleton').addEventListener('change', (e) => {
+            characterControls.showSkeleton = e.target.checked;
+            updateDisplay();
+        });
+
+        // Size
+        const sizeSlider = document.getElementById('size');
+        const sizeValue = document.getElementById('sizeValue');
+        sizeSlider.addEventListener('input', (e) => {
+            characterControls.characterScale = parseFloat(e.target.value);
+            sizeValue.textContent = characterControls.characterScale.toFixed(2) + 'x';
+            updateDisplay();
+        });
+
+        // Rotation
+        const rotationSlider = document.getElementById('rotation');
+        const rotationValue = document.getElementById('rotationValue');
+        rotationSlider.addEventListener('input', (e) => {
+            characterControls.characterRotation = parseInt(e.target.value);
+            rotationValue.textContent = characterControls.characterRotation + '°';
+            updateDisplay();
+        });
+
+        updateDisplay();
+    </script>
+</body>
+</html> 

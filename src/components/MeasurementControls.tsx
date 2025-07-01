@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
+import { useCharacterControls } from "@/contexts/CharacterControlsContext"
 
 export type Measurements = {
   height: number
@@ -13,6 +14,8 @@ export type Measurements = {
   waist: number
   hips: number
 }
+
+
 
 type MeasurementControlsProps = {
   initialMeasurements?: Measurements
@@ -30,6 +33,7 @@ export default function MeasurementControls({
   onChange,
 }: MeasurementControlsProps) {
   const [measurements, setMeasurements] = useState<Measurements>(initialMeasurements)
+  const characterControls = useCharacterControls()
   const [tempMeasurements, setTempMeasurements] = useState<Measurements>(initialMeasurements)
 
   const handleTempChange = (key: keyof Measurements, value: number[]) => {
@@ -48,11 +52,14 @@ export default function MeasurementControls({
     onChange?.(newMeasurements)
   }
 
+
+
   return (
     <Card className="w-full h-full">
       <Tabs defaultValue="body" className="w-full">
-        <TabsList className="grid w-full grid-cols-1">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="body">Body</TabsTrigger>
+          <TabsTrigger value="adjust">Adjust</TabsTrigger>
         </TabsList>
         <TabsContent value="body" className="space-y-4 p-4">
           <div className="space-y-4">
@@ -73,6 +80,80 @@ export default function MeasurementControls({
                 />
               </div>
             ))}
+          </div>
+        </TabsContent>
+        <TabsContent value="adjust" className="space-y-4 p-4">
+          <div className="space-y-6">
+            {characterControls ? (
+              /* Character Controls - Clean styling for sidebar */
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🎭</span>
+                  <h3 className="font-semibold text-gray-800">Character Controls</h3>
+                </div>
+
+                {/* Wireframe and Skeleton toggles */}
+                <div className="space-y-3">
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={characterControls.wireframe}
+                        onChange={e => characterControls.setWireframe(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">Wireframe</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={characterControls.showSkeleton}
+                        onChange={e => characterControls.setShowSkeleton(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">Skeleton</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Character Size */}
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <Label className="text-sm font-medium">Size</Label>
+                    <span className="text-sm text-muted-foreground">{characterControls.characterScale.toFixed(2)}x</span>
+                  </div>
+                  <Slider
+                    value={[characterControls.characterScale]}
+                    min={0.5}
+                    max={3.0}
+                    step={0.01}
+                    onValueChange={([v]) => characterControls.setCharacterScale(v)}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Character Rotation */}
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <Label className="text-sm font-medium">Rotation</Label>
+                    <span className="text-sm text-muted-foreground">{characterControls.characterRotation}°</span>
+                  </div>
+                  <Slider
+                    value={[characterControls.characterRotation]}
+                    min={0}
+                    max={360}
+                    step={1}
+                    onValueChange={([v]) => characterControls.setCharacterRotation(v)}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 text-center">
+                Character controls are available on the Canvas.
+              </p>
+            )}
           </div>
         </TabsContent>
       </Tabs>

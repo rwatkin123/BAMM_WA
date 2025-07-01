@@ -158,7 +158,7 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
         setFileName(data.filenames);
         localStorage.removeItem("audio_enabled"); // 🚫 prevent audio from playing
         localStorage.removeItem("audio");
-        onFileReceived(`http://127.0.0.1:5000/mesh/public/${data.filenames}`);
+        onFileReceived(`${port}/mesh/public/${data.filenames}`);
         onAvatarUpdate();
         
         // Reset input fields after successful submission

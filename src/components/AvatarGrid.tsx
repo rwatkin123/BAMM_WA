@@ -2,16 +2,27 @@
 
 import { useEffect, useState } from "react";
 import LazyImage from "./LazyImage";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Plus, Minus, Users } from "lucide-react";
 
 interface AvatarGridProps {
-  onSelectAvatar: (filename: string) => void;
+  onSelectAvatar?: (filename: string) => void; // Keep for backward compatibility
+  onSelectAvatars?: (filenames: string[]) => void; // NEW: Multi-character handler
+  selectedAvatars?: string[]; // NEW: Track selected characters
+  multiCharacterMode?: boolean; // NEW: Toggle between single/multi selection
+  maxCharacters?: number; // NEW: Character limit
   className?: string;
 }
 
-export default function AvatarGrid({ onSelectAvatar, className = "w-[32rem]" }: AvatarGridProps) {
+export default function AvatarGrid({ 
+  onSelectAvatar,
+  onSelectAvatars,
+  selectedAvatars = [], 
+  multiCharacterMode = false,
+  maxCharacters = 4,
+  className = "w-[32rem]" 
+}: AvatarGridProps) {
   const [files, setFiles] = useState<string[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [singleSelected, setSingleSelected] = useState<string | null>(null); // For single mode
 
   useEffect(() => {
     const fetchFiles = async () => {
@@ -27,38 +38,188 @@ export default function AvatarGrid({ onSelectAvatar, className = "w-[32rem]" }: 
     fetchFiles();
   }, []);
 
-  const handleSelect = (filename: string) => {
-    setSelected(filename);
-    onSelectAvatar(filename);
+  // Handle single character selection (original behavior)
+  const handleSingleSelect = (filename: string) => {
+    setSingleSelected(filename);
+    if (onSelectAvatar) {
+      onSelectAvatar(filename);
+    }
+  };
+
+  // Handle multi-character selection (new behavior)
+  const handleMultiSelect = (filename: string) => {
+    const isSelected = selectedAvatars.includes(filename);
+    
+    if (isSelected) {
+      // Remove character
+      const newSelection = selectedAvatars.filter(f => f !== filename);
+      if (onSelectAvatars) {
+        onSelectAvatars(newSelection);
+      }
+    } else {
+      // Add character (if under limit)
+      if (selectedAvatars.length < maxCharacters) {
+        const newSelection = [...selectedAvatars, filename];
+        if (onSelectAvatars) {
+          onSelectAvatars(newSelection);
+        }
+      }
+    }
+  };
+
+  const clearAllMulti = () => {
+    if (onSelectAvatars) {
+      onSelectAvatars([]);
+    }
+  };
+
+  const isSelected = (filename: string) => {
+    if (multiCharacterMode) {
+      return selectedAvatars.includes(filename);
+    } else {
+      return singleSelected === filename;
+    }
+  };
+
+  const isDisabled = (filename: string) => {
+    if (!multiCharacterMode) return false;
+    return !selectedAvatars.includes(filename) && selectedAvatars.length >= maxCharacters;
+  };
+
+  const handleSelection = (filename: string) => {
+    if (isDisabled(filename)) return;
+    
+    if (multiCharacterMode) {
+      handleMultiSelect(filename);
+    } else {
+      handleSingleSelect(filename);
+    }
   };
 
   return (
     <div className={`${className} bg-transparent h-full overflow-y-auto p-6 space-y-4`}>
+      
+      {/* Mode indicator and controls */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          {multiCharacterMode ? (
+            <>
+              <Users className="w-5 h-5 text-blue-600" />
+              <span className="text-sm font-medium text-gray-700">
+                Multi-Character Mode ({selectedAvatars.length}/{maxCharacters})
+              </span>
+            </>
+          ) : (
+            <>
+              <Users className="w-5 h-5 text-gray-400" />
+              <span className="text-sm font-medium text-gray-700">
+                Single Character Mode
+              </span>
+            </>
+          )}
+        </div>
+        
+        {multiCharacterMode && selectedAvatars.length > 0 && (
+          <button
+            onClick={clearAllMulti}
+            className="text-xs text-red-500 hover:text-red-700 transition"
+          >
+            Clear All
+          </button>
+        )}
+      </div>
+
+      {/* Selected Characters Preview (Multi-mode only) */}
+      {multiCharacterMode && selectedAvatars.length > 0 && (
+        <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="text-xs font-medium text-blue-700 mb-2">
+            Selected Characters ({selectedAvatars.length}):
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {selectedAvatars.map((filename, index) => (
+              <div key={filename} className="flex items-center gap-1 bg-blue-100 px-2 py-1 rounded text-xs">
+                <span className="text-blue-800 font-bold">#{index + 1}</span>
+                <span className="text-blue-600 truncate max-w-24" title={filename}>
+                  {filename.length > 15 ? filename.substring(0, 15) + "..." : filename}
+                </span>
+                <button
+                  onClick={() => handleMultiSelect(filename)}
+                  className="text-blue-500 hover:text-red-500 transition"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Instruction text */}
+      <div className="text-center text-xs text-gray-500 mb-4">
+        {multiCharacterMode 
+          ? `Select up to ${maxCharacters} characters for synchronized animation`
+          : "Select one character for animation"
+        }
+      </div>
+
+      {/* Character Grid */}
       <div className="grid grid-cols-2 gap-6">
         {files.map((filename) => (
           <div
             key={filename}
-            className={`relative rounded-xl bg-white shadow-sm border border-gray-100 transition-all cursor-pointer hover:shadow-lg hover:scale-[1.025] active:scale-100 duration-200
-              ${selected === filename ? "ring-2 ring-blue-400 border-blue-400" : "hover:border-gray-300"}
+            className={`relative rounded-xl bg-white shadow-sm border transition-all cursor-pointer duration-200
+              ${isSelected(filename) 
+                ? multiCharacterMode 
+                  ? "ring-2 ring-blue-400 border-blue-400 bg-blue-50" 
+                  : "ring-2 ring-blue-400 border-blue-400"
+                : isDisabled(filename)
+                ? "border-gray-200 opacity-50 cursor-not-allowed"
+                : "border-gray-100 hover:shadow-lg hover:scale-[1.025] hover:border-gray-300"
+              }
             `}
-            onClick={() => handleSelect(filename)}
+            onClick={() => handleSelection(filename)}
           >
-            {selected === filename && (
-              <div className="absolute top-2 right-2 z-10">
+            {/* Selection Indicator */}
+            <div className="absolute top-2 right-2 z-10">
+              {isSelected(filename) ? (
                 <CheckCircle2 className="w-6 h-6 text-blue-500 drop-shadow" />
+              ) : multiCharacterMode && isDisabled(filename) ? (
+                <div className="w-6 h-6 rounded-full bg-gray-300 opacity-50" />
+              ) : multiCharacterMode ? (
+                <div className="w-6 h-6 rounded-full border-2 border-gray-300 bg-white hover:border-blue-300 transition" />
+              ) : null}
+            </div>
+
+            {/* Character Number Badge (Multi-mode only) */}
+            {multiCharacterMode && isSelected(filename) && (
+              <div className="absolute top-2 left-2 z-10 bg-blue-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+                {selectedAvatars.indexOf(filename) + 1}
               </div>
             )}
+
             <div className="aspect-[3/4] relative rounded-t-xl overflow-hidden">
               <LazyImage filename={filename} />
             </div>
-            <div className="text-xs text-center px-2 py-2 font-medium text-gray-500 truncate">
+            <div className={`text-xs text-center px-2 py-2 font-medium truncate
+              ${isSelected(filename) 
+                ? multiCharacterMode ? "text-blue-700" : "text-blue-600"
+                : "text-gray-500"}
+            `}>
               {filename}
             </div>
           </div>
         ))}
       </div>
+      
+      {/* Character limit warning */}
+      {multiCharacterMode && selectedAvatars.length >= maxCharacters && (
+        <div className="text-center text-xs text-amber-600 bg-amber-50 py-2 px-3 rounded border border-amber-200">
+          Maximum {maxCharacters} characters selected
+        </div>
+      )}
+      
       <div className="my-2 border-t border-dashed border-gray-200" />
-      <div className="text-center text-xs text-gray-400">Scroll for more</div>
+      <div className="text-center text-xs text-gray-400">Scroll for more characters</div>
     </div>
   );
 }

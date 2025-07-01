@@ -590,7 +590,7 @@ export default function Canvas({
       {/* 🆕 REMOVED: Controls moved to dashboard */}
 
       {/* --- Smart Card Container --- */}
-      <div className="absolute top-6 right-6 flex flex-col gap-3 z-50">
+      <div className="absolute top-6 right-6 bottom-6 flex flex-col gap-3 z-50">
         {/* Card 1: Credits & Tokens */}
         <div className="w-80 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-xl">
           <div className="flex items-center justify-between mb-3">
@@ -677,8 +677,8 @@ export default function Canvas({
           </div>
         </div>
 
-        {/* Card 3: Motion Chatbot */}
-        <div className="w-80 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl backdrop-blur-lg transition-all duration-300 hover:shadow-xl">
+        {/* Card 3: Motion Chatbot - Flex to align bottom with play card */}
+        <div className="w-80 flex-1 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl backdrop-blur-lg transition-all duration-300 hover:shadow-xl overflow-hidden">
           {onFileReceived && onSend && onAvatarUpdate && (
             <Chatbot
               onFileReceived={onFileReceived}

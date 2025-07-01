@@ -167,14 +167,14 @@ export default function AvatarGrid({
         {files.map((filename) => (
           <div
             key={filename}
-            className={`relative rounded-xl bg-white shadow-sm border transition-all cursor-pointer duration-200
+            className={`relative rounded-xl bg-white shadow-sm border-[3px] transition-all cursor-pointer duration-200
               ${isSelected(filename) 
                 ? multiCharacterMode 
-                  ? "ring-2 ring-blue-400 border-blue-400 bg-blue-50" 
-                  : "ring-2 ring-blue-400 border-blue-400"
+                  ? "ring-2 ring-blue-400 border-[3px] border-blue-300 bg-blue-50" 
+                  : "ring-2 ring-blue-400 border-[3px] border-blue-300"
                 : isDisabled(filename)
-                ? "border-gray-200 opacity-50 cursor-not-allowed"
-                : "border-gray-100 hover:shadow-lg hover:scale-[1.025] hover:border-gray-300"
+                ? "border-[3px] border-gray-200 opacity-50 cursor-not-allowed"
+                : "border-[3px] border-gray-200 hover:shadow-lg hover:scale-[1.025] hover:border-[3px] hover:border-gray-300"
               }
             `}
             onClick={() => handleSelection(filename)}

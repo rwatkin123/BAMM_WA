@@ -271,7 +271,18 @@ export default function Canvas({
       if (bvhFile && targetModels.length > 0) {
         try {
           const sourceModel: any = await new Promise((resolve, reject) => {
-            new BVHLoader().load(bvhFile, resolve, undefined, reject);
+            fetch(bvhFile, {
+              headers: {
+                'ngrok-skip-browser-warning': 'true'
+              }
+            })
+              .then(res => res.arrayBuffer())
+              .then(buffer => {
+                // Parse BVH from buffer
+                const loader = new BVHLoader();
+                const result = loader.parse(new TextDecoder().decode(buffer));
+                resolve(result);
+              });
           });
 
           const source = getSource(sourceModel);

@@ -12,6 +12,7 @@ interface ChatbotProps {
   onSend: () => void;
   onAvatarUpdate: () => void;
 }
+const port = "https://relaxing-guiding-sailfish.ngrok-free.app"
 
 type EditOperation = 'prefix' | 'in-between' | 'suffix';
 
@@ -71,7 +72,7 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
       };
 
       const response = await axios.post(
-        'http://localhost:8080/generate-motion',
+        port + '/generate-motion',
         formData,
         {
           headers: {
@@ -88,7 +89,7 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
         setFileName(data.filenames);
         localStorage.removeItem("audio_enabled"); // 🚫 prevent audio from playing
         localStorage.removeItem("audio");   
-        onFileReceived(`http://localhost:8080/mesh/public/${data.filenames}`);
+        onFileReceived(`${port}/mesh/public/${data.filenames}`);
         setIsEditing(true);
       } else {
         console.error("No BVH files returned from backend.");
@@ -107,7 +108,7 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
 
     switch(editOperation) {
       case 'prefix':
-        url = 'http://localhost:8080/add-motion-prefix';
+        url = port + '/add-motion-prefix';
         payload = {
           text_prompt: [prefixPrompt],
           filename: fileName,
@@ -115,7 +116,7 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
         };
         break;
       case 'in-between':
-        url = 'http://localhost:8080/add-motion-inbetween';
+        url = port + '/add-motion-inbetween';
         payload = {
           text_prompt: [inBetweenPrompt],
           filename: fileName,
@@ -124,7 +125,7 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
         };
         break;
       case 'suffix':
-        url = 'http://localhost:8080/add-motion-suffix';
+        url = port + '/add-motion-suffix';
         payload = {
           text_prompt: [suffixPrompt],
           filename: fileName,
@@ -157,7 +158,7 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
         setFileName(data.filenames);
         localStorage.removeItem("audio_enabled"); // 🚫 prevent audio from playing
         localStorage.removeItem("audio");
-        onFileReceived(`http://localhost:8080/mesh/public/${data.filenames}`);
+        onFileReceived(`http://127.0.0.1:5000/mesh/public/${data.filenames}`);
         onAvatarUpdate();
         
         // Reset input fields after successful submission

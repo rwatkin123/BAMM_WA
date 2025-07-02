@@ -142,8 +142,76 @@ export default function Canvas({
     const clock = clockRef.current;
     const scene = new THREE.Scene();
     sceneRef_three.current = scene;
-    scene.background = new THREE.Color("#f8fafc");
-    scene.fog = new THREE.Fog("#f8fafc", 3, 25);
+    
+    // Create sky gradient
+    const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+    const skyMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        topColor: { value: new THREE.Color(0x87CEEB) }, // Light sky blue
+        bottomColor: { value: new THREE.Color(0xffffff) }, // White
+        offset: { value: 33 },
+        exponent: { value: 0.6 }
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform float offset;
+        uniform float exponent;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition + offset).y;
+          gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+        }
+      `,
+      side: THREE.BackSide
+    });
+    
+    const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+    scene.add(sky);
+    
+    // Add clouds
+    const cloudGeometry = new THREE.SphereGeometry(1, 8, 8);
+    const cloudMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xffffff, 
+      transparent: true, 
+      opacity: 0.8 
+    });
+    
+    // Create multiple cloud clusters
+    for (let i = 0; i < 15; i++) {
+      const cloudCluster = new THREE.Group();
+      
+      // Each cloud cluster has multiple spheres
+      const sphereCount = Math.floor(Math.random() * 5) + 3;
+      for (let j = 0; j < sphereCount; j++) {
+        const cloudSphere = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        cloudSphere.position.set(
+          (Math.random() - 0.5) * 2,
+          (Math.random() - 0.5) * 1.5,
+          (Math.random() - 0.5) * 2
+        );
+        cloudSphere.scale.setScalar(Math.random() * 0.8 + 0.5);
+        cloudCluster.add(cloudSphere);
+      }
+      
+      // Position cloud clusters in the sky
+      cloudCluster.position.set(
+        (Math.random() - 0.5) * 200,
+        Math.random() * 50 + 30,
+        (Math.random() - 0.5) * 200
+      );
+      cloudCluster.scale.setScalar(Math.random() * 2 + 1);
+      
+      scene.add(cloudCluster);
+    }
     
 
 
@@ -572,7 +640,7 @@ export default function Canvas({
       )}
       
       {/* Play Controls Card - Bottom Left (moved from dashboard) */}
-      <div className="absolute bottom-6 left-6 w-80 bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100 p-4 z-50">
+      <div className="absolute bottom-6 left-6 w-80 bg-white/70 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100 p-4 z-50">
         {/* Compact Header */}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -632,7 +700,7 @@ export default function Canvas({
       {/* --- Smart Card Container --- */}
       <div className="absolute top-6 right-6 bottom-6 flex flex-col gap-3 z-50">
         {/* Card 1: Credits & Tokens */}
-        <div className="w-80 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-xl">
+        <div className="w-80 bg-white/60 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-2xl" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="text-lg">🪙</span>
@@ -674,7 +742,7 @@ export default function Canvas({
         </div>
 
         {/* Card 3: Character Mode Toggle */}
-        <div className="w-80 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-xl">
+        <div className="w-80 bg-white/60 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-2xl" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="text-lg">👥</span>
@@ -714,7 +782,7 @@ export default function Canvas({
         </div>
 
         {/* Card 3: Motion Chatbot - Flex to align bottom with play card */}
-        <div className="w-80 flex-1 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl backdrop-blur-lg transition-all duration-300 hover:shadow-xl overflow-hidden">
+        <div className="w-80 flex-1 bg-white/60 shadow-2xl border border-gray-100 rounded-2xl backdrop-blur-lg transition-all duration-300 hover:shadow-2xl overflow-hidden" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
           {onFileReceived && onSend && onAvatarUpdate && (
             <Chatbot
               onFileReceived={onFileReceived}

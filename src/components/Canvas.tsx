@@ -395,8 +395,8 @@ export default function Canvas({
               // Hit trim-end → stop
               mixersRef.current.forEach(m => m.setTime(trimRangeRef.current[1]));
               if (audioRef.current) audioRef.current.pause();
-              if (onPlayStateChange) onPlayStateChange(false);
-              setInternalIsPlaying(false);
+             // if (onPlayStateChange) onPlayStateChange(false);
+              //setInternalIsPlaying(false);
             } else {
               mixersRef.current.forEach(m => m.update(delta));
               setProgress(currentTime);

@@ -249,6 +249,8 @@ export default function Canvas({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.minDistance = 0;
     controls.maxDistance = 1200;
+    controls.minPolarAngle = 0; // Prevent going below the grid (0 = horizontal)
+    controls.maxPolarAngle = Math.PI / 2; // Allow full 180 degree view above
     controls.target.set(0, 1, 0);
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);

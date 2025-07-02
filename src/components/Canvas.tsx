@@ -45,6 +45,8 @@ export default function Canvas({
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [trimRange, setTrimRange] = useState([0, 0]);
+  const trimRangeRef = useRef<[number, number]>(trimRange);
+  useEffect(() => { trimRangeRef.current = trimRange; }, [trimRange]);
   const [loadingCharacters, setLoadingCharacters] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const isPlayingRef = useRef(isPlaying);
@@ -354,33 +356,57 @@ export default function Canvas({
         }
       }
 
-      function animate() {
-        const delta = clock.getDelta();
+//      function animate() {
+  //      const delta = clock.getDelta();
         
         // Only update mixers if playing
-        if (mixers.length > 0 && isPlayingRef.current) {
-          const currentTime = mixers[0]?.time || 0;
+    //    if (mixers.length > 0 && isPlayingRef.current) {
+      //    const currentTime = mixers[0]?.time || 0;
           
-          if (currentTime >= trimRange[1]) {
-            mixers.forEach(mixer => mixer.setTime(trimRange[1]));
-            if (audioRef.current) audioRef.current.currentTime = trimRange[1];
-            mixers.forEach(mixer => mixer.timeScale = 0);
-            if (audioRef.current) audioRef.current.pause();
-            setIsPlaying(false);
-          } else {
-            mixers.forEach(mixer => mixer.update(delta));
-            setProgress(currentTime);
-          }
-        }
+        //  if (currentTime >= trimRange[1]) {
+          //  mixers.forEach(mixer => mixer.setTime(trimRange[1]));
+            //if (audioRef.current) audioRef.current.currentTime = trimRange[1];
+            //mixers.forEach(mixer => mixer.timeScale = 0);
+            //if (audioRef.current) audioRef.current.pause();
+            //setIsPlaying(false);
+          //} else {
+            //mixers.forEach(mixer => mixer.update(delta));
+            //setProgress(currentTime);
+          //}
+        //}
         
-        controls.update();
-        renderer.render(scene, camera);
-      }
+        //controls.update();
+        //renderer.render(scene, camera);
+      //}
 
-      renderer.setAnimationLoop(animate);
+      //renderer.setAnimationLoop(animate);
     }
 
     setupModels();
+
+        // ONE animation/render loop for the whole scene:
+        renderer.setAnimationLoop(() => {
+          const delta = clock.getDelta();
+    
+          if (mixersRef.current.length && isPlayingRef.current) {
+            const currentTime = mixersRef.current[0].time;
+    
+            if (currentTime >= trimRangeRef.current[1]) {
+              // Hit trim-end → stop
+              mixersRef.current.forEach(m => m.setTime(trimRangeRef.current[1]));
+              if (audioRef.current) audioRef.current.pause();
+              if (onPlayStateChange) onPlayStateChange(false);
+              setInternalIsPlaying(false);
+            } else {
+              mixersRef.current.forEach(m => m.update(delta));
+              setProgress(currentTime);
+            }
+          }
+    
+          controls.update();
+          renderer.render(scene, camera);
+        });
+    
 
     const onWindowResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -391,6 +417,7 @@ export default function Canvas({
     window.addEventListener("resize", onWindowResize);
     return () => {
       window.removeEventListener("resize", onWindowResize);
+      renderer.setAnimationLoop(null);
       renderer.dispose();
       mixers.forEach(mixer => mixer.stopAllAction());
     };

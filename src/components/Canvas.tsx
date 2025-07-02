@@ -13,8 +13,6 @@ interface CanvasProps {
   bvhFile: string | null;
   trigger?: boolean;
   selectedCharacters: string[];
-  isPlaying?: boolean;
-  onPlayStateChange?: (isPlaying: boolean) => void;
   onProgressChange?: (progress: number) => void;
   onDurationChange?: (duration: number) => void;
   onTrimRangeChange?: (trimRange: number[]) => void;
@@ -29,8 +27,6 @@ export default function Canvas({
   bvhFile, 
   trigger, 
   selectedCharacters = [],
-  isPlaying,
-  onPlayStateChange,
   onProgressChange,
   onDurationChange,
   onTrimRangeChange,
@@ -50,17 +46,8 @@ export default function Canvas({
   const [duration, setDuration] = useState(0);
   const [trimRange, setTrimRange] = useState([0, 0]);
   const [loadingCharacters, setLoadingCharacters] = useState(false);
-
-  // Use external isPlaying if provided, otherwise use internal state
-  const [internalIsPlaying, setInternalIsPlaying] = useState(false);
-  const currentIsPlaying = isPlaying !== undefined ? isPlaying : internalIsPlaying;
-  
-  const isPlayingRef = useRef(currentIsPlaying);
-  isPlayingRef.current = currentIsPlaying;
-  const trimRangeRef = useRef(trimRange);
-  trimRangeRef.current = trimRange;
-
-
+  const [isPlaying, setIsPlaying] = useState(false);
+  const isPlayingRef = useRef(isPlaying);
 
   // Store references to loaded models for transform updates
   const modelsRef = useRef<any[]>([]);
@@ -81,7 +68,16 @@ export default function Canvas({
     setShowSkeleton
   } = useCharacterControls();
 
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+
   useEffect(() => {
+    console.log('[DEBUG] Canvas useEffect triggered', {
+      selectedCharacters,
+      bvhFile,
+      trigger,
+      showSkeleton
+    });
     if (duration > 0) {
       setTrimRange([0, duration]);
       if (onDurationChange) {
@@ -90,46 +86,9 @@ export default function Canvas({
     }
   }, [duration, onDurationChange]);
 
-  // Handle external play state changes
   useEffect(() => {
-    if (isPlaying !== undefined) {
-      const mixers = mixersRef.current;
-      
-      if (mixers.length > 0) {
-        if (isPlaying) {
-          // PLAY: Start all mixers
-          console.log("Starting mixers from external control");
-          mixers.forEach((mixer, index) => {
-            // If mixer is outside trim range, reset to start
-            if (mixer.time < trimRange[0] || mixer.time >= trimRange[1]) {
-              mixer.setTime(trimRange[0]);
-            }
-            // Set time scale to 1 to play
-            mixer.timeScale = 1;
-          });
-          
-          // Handle audio
-          if (audioRef.current) {
-            if (audioRef.current.currentTime < trimRange[0] || audioRef.current.currentTime >= trimRange[1]) {
-              audioRef.current.currentTime = trimRange[0];
-            }
-            audioRef.current.play().catch(e => console.log("Audio play failed:", e));
-          }
-        } else {
-          // PAUSE: Stop all mixers
-          console.log("Pausing mixers from external control");
-          mixers.forEach((mixer, index) => {
-            mixer.timeScale = 0;
-          });
-          
-          // Handle audio
-          if (audioRef.current) {
-            audioRef.current.pause();
-          }
-        }
-      }
-    }
-  }, [isPlaying, trimRange]);
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   // Helper function to normalize character scale
   const normalizeCharacterScale = (model: any, targetHeight: number = 2.0) => {
@@ -204,8 +163,10 @@ export default function Canvas({
       1,
       2000
     );
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
+    rendererRef.current = renderer;
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -396,20 +357,16 @@ export default function Canvas({
       function animate() {
         const delta = clock.getDelta();
         
-        // Update all mixers
+        // Only update mixers if playing
         if (mixers.length > 0 && isPlayingRef.current) {
           const currentTime = mixers[0]?.time || 0;
           
-          if (currentTime >= trimRangeRef.current[1]) {
-            mixers.forEach(mixer => mixer.setTime(trimRangeRef.current[1]));
-            if (audioRef.current) audioRef.current.currentTime = trimRangeRef.current[1];
-            if (onPlayStateChange) {
-              onPlayStateChange(false);
-            } else {
-              setInternalIsPlaying(false);
-            }
+          if (currentTime >= trimRange[1]) {
+            mixers.forEach(mixer => mixer.setTime(trimRange[1]));
+            if (audioRef.current) audioRef.current.currentTime = trimRange[1];
             mixers.forEach(mixer => mixer.timeScale = 0);
             if (audioRef.current) audioRef.current.pause();
+            setIsPlaying(false);
           } else {
             mixers.forEach(mixer => mixer.update(delta));
             setProgress(currentTime);
@@ -485,13 +442,11 @@ export default function Canvas({
     }
   }, [showSkeleton]);
 
-
-
   // 🔧 FIXED Play/Pause Handler with Debug Logging
   const handlePlayPause = () => {
     const mixers = mixersRef.current;
     
-    console.log("Play button clicked, mixers:", mixers.length, "isPlaying:", isPlaying);
+    console.log("Play button clicked, mixers:", mixers.length);
     
     if (mixers.length > 0) {
       if (isPlaying) {
@@ -539,21 +494,23 @@ export default function Canvas({
     }
     
     // Toggle play state
-    if (onPlayStateChange) {
-      onPlayStateChange(!currentIsPlaying);
-    } else {
-      setInternalIsPlaying(!currentIsPlaying);
-    }
-    console.log("Play state changed to:", !currentIsPlaying);
+    setIsPlaying(!isPlaying);
+    console.log("Play state changed to:", !isPlaying);
   };
 
   const handleSeek = (newTime: number) => {
     const clampedTime = Math.max(trimRange[0], Math.min(newTime, trimRange[1]));
     const mixers = mixersRef.current;
-    
-    mixers.forEach(mixer => mixer.setTime(clampedTime));
+    mixers.forEach(mixer => {
+      mixer.setTime(clampedTime);
+      mixer.update(0); // Force update pose
+    });
     if (audioRef.current) audioRef.current.currentTime = clampedTime;
     setProgress(clampedTime);
+    // Force render if not playing
+    if (!isPlayingRef.current && rendererRef.current && sceneRef_three.current && cameraRef.current) {
+      rendererRef.current.render(sceneRef_three.current, cameraRef.current);
+    }
   };
 
   const handleTrimRangeChange = (newRange: number[]) => {
@@ -587,8 +544,64 @@ export default function Canvas({
         </div>
       )}
       
-      {/* 🆕 REMOVED: Controls moved to dashboard */}
-
+      {/* Play Controls Card - Bottom Left (moved from dashboard) */}
+      <div className="absolute bottom-6 left-6 w-80 bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100 p-4 z-50">
+        {/* Compact Header */}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+            <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M8 5v10l8-5-8-5z"/>
+            </svg>
+            Motion
+          </h3>
+          <div className="text-xs text-gray-500 font-mono">
+            {progress.toFixed(1)}s / {duration.toFixed(1)}s
+          </div>
+        </div>
+        {/* Compact Controls Row */}
+        <div className="flex items-center gap-3">
+          {/* Circular Play/Pause Button */}
+          <button
+            onClick={handlePlayPause}
+            disabled={loadingCharacters}
+            className={`w-12 h-12 rounded-full transition-all duration-200 flex items-center justify-center shadow-sm hover:shadow-md
+              ${loadingCharacters 
+                ? 'bg-gray-200 cursor-not-allowed' 
+                : isPlaying
+                  ? 'bg-red-500 hover:bg-red-600 text-white'
+                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+              }`}
+          >
+            {isPlaying ? (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M6 4h4v12H6V4zm4 0h4v12h-4V4z"/>
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M8 5v10l8-5-8-5z"/>
+              </svg>
+            )}
+          </button>
+          {/* Progress Bar as Slider */}
+          <div className="flex-1">
+            <Slider
+              min={trimRange[0]}
+              max={trimRange[1] || duration}
+              step={0.01}
+              value={[progress]}
+              onValueChange={([val]) => handleSeek(val)}
+              disabled={loadingCharacters || duration === 0}
+            />
+          </div>
+          {/* Character Count */}
+          {selectedCharacters.length > 1 && (
+            <div className="text-xs text-blue-600 font-medium">
+              {selectedCharacters.length} chars
+            </div>
+          )}
+        </div>
+      </div>
+      
       {/* --- Smart Card Container --- */}
       <div className="absolute top-6 right-6 bottom-6 flex flex-col gap-3 z-50">
         {/* Card 1: Credits & Tokens */}
@@ -632,10 +645,6 @@ export default function Canvas({
             </div>
           </div>
         </div>
-
-
-
-
 
         {/* Card 3: Character Mode Toggle */}
         <div className="w-80 bg-white/80 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-xl">

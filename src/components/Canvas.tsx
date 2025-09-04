@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { BVHLoader } from "three/addons/loaders/BVHLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 import { Slider } from "./ui/slider";
 import create_glb from "./create_glb";
@@ -264,6 +265,7 @@ export default function Canvas({
 
     async function setupModels() {
       const loader = new GLTFLoader();
+      const fbxLoader = new FBXLoader();
       const targetModels: any[] = [];
       
       // Clear previous mixers
@@ -322,7 +324,7 @@ export default function Canvas({
           console.error("Failed to load default mesh.glb:", error);
         }
       } else {
-        // MULTIPLE CHARACTERS SELECTED: Generate each character
+        // CHARACTERS SELECTED: Load each character (custom or Mixamo)
         setLoadingCharacters(true);
         
         for (let i = 0; i < selectedCharacters.length; i++) {
@@ -331,20 +333,24 @@ export default function Canvas({
 
           try {
             console.log(`Loading character ${i + 1}/${selectedCharacters.length}: ${characterName}`);
-            
-            // Generate character GLB
-            await create_glb(characterName);
-            // Small delay to ensure file is written
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // Load the generated character
-            const targetModel: any = await new Promise((resolve, reject) => {
-              loader.load(`/mesh/mesh.glb?t=${Date.now()}&char=${i}`, resolve, undefined, reject);
-            });
+            let targetModel: any;
+            if (characterName.toLowerCase().endsWith('.fbx') || characterName.includes('/mixamo/')) {
+              // Load FBX model directly (Mixamo)
+              const fbx: any = await new Promise((resolve, reject) => {
+                fbxLoader.load(characterName, resolve, undefined, reject);
+              });
+              targetModel = { scene: fbx };
+            } else {
+              // Custom: Generate and load GLB
+              await create_glb(characterName);
+              await new Promise(resolve => setTimeout(resolve, 500));
+              targetModel = await new Promise((resolve, reject) => {
+                loader.load(`/mesh/mesh.glb?t=${Date.now()}&char=${i}`, resolve, undefined, reject);
+              });
+            }
 
             scene.add(targetModel.scene);
             modelsRef.current.push(targetModel.scene);
-
 
             targetModel.scene.traverse((child: any) => {
               if (child.isSkinnedMesh) {
@@ -353,15 +359,12 @@ export default function Canvas({
               }
             });
 
-            // 🔧 NEW: Normalize character scale BEFORE positioning
             const { scaleFactor } = normalizeCharacterScale(targetModel, 2.0);
             console.log(`Character ${i + 1} (${characterName}) scaled by: ${scaleFactor.toFixed(3)}`);
 
-            // NOW position the normalized character
             targetModel.scene.position.x += position[0];
             targetModel.scene.position.z += position[2];
-            // Y position is already set by normalizeCharacterScale
-
+            
             targetModels.push(targetModel);
             
             // Add skeleton helper if enabled
@@ -798,24 +801,38 @@ function getSource(sourceModel: any) {
 }
 
 function retargetModel(source: any, targetModel: any) {
-  const targetSkin = targetModel.scene.children[0];
+  let targetSkin: any = null;
+  // targetModel.scene.traverse((child: any) => {
+  //   if (!targetSkin && child.isSkinnedMesh) {
+  //     targetSkin = child;
+  //   }
+  // });
+  // console.log('targetSkin', targetSkin);
+  // if (!targetSkin) {
+  //   console.warn('No SkinnedMesh found for target model; using first child as fallback');
+  console.log('targetSkin', targetModel);
+    targetSkin = targetModel.scene.children[1];
+  // }
   const retargetedClip = SkeletonUtils.retargetClip(targetSkin, source.skeleton, source.clip, {
     hip: 'Hips',
     getBoneName: function (bone: any) {
-      return bone.name;
+      //return bone.name;
+       return bone.name.replace(/^mixamorig/, '');
     }
   });
+  console.log('retargetedClip', retargetedClip);
   const mixer = new THREE.AnimationMixer(targetSkin);
-  retargetedClip.tracks.forEach((track: any) => {
-    if (track.name.includes('Hips') && track.name.endsWith('.position')) {
-      const values = track.values.slice();
-      const firstY = values[1];
-      for (let i = 1; i < values.length; i += 3) {
-        values[i] -= firstY;
-      }
-      track.values = values;
-    }
-  });
+  
+  // retargetedClip.tracks.forEach((track: any) => {
+  //   if (track.name.includes('Hips') && track.name.endsWith('.position')) {
+  //     const values = track.values.slice();
+  //     const firstY = values[1];
+  //     for (let i = 1; i < values.length; i += 3) {
+  //       values[i] -= firstY;
+  //     }
+  //     track.values = values;
+  //   }
+  // });
   mixer.clipAction(retargetedClip).play();
   return mixer;
 }

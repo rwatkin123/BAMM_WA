@@ -22,12 +22,13 @@ export default function AvatarGrid({
   className = "w-[32rem]" 
 }: AvatarGridProps) {
   const [files, setFiles] = useState<string[]>([]);
+  const [source, setSource] = useState<'custom' | 'mixamo'>("custom");
   const [singleSelected, setSingleSelected] = useState<string | null>(null); // For single mode
 
   useEffect(() => {
     const fetchFiles = async () => {
       try {
-        const res = await fetch("/api/listfile");
+        const res = await fetch(`/api/listfile?source=${source}`);
         const data = await res.json();
         setFiles(data.files);
       } catch (err) {
@@ -36,7 +37,7 @@ export default function AvatarGrid({
     };
 
     fetchFiles();
-  }, []);
+  }, [source]);
 
   // Handle single character selection (original behavior)
   const handleSingleSelect = (filename: string) => {
@@ -98,6 +99,23 @@ export default function AvatarGrid({
 
   return (
     <div className={`${className} bg-transparent h-full overflow-y-auto p-6 space-y-4`}>
+      {/* Source toggle */}
+      <div className="flex items-center justify-between">
+        <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+          <button
+            className={`px-3 py-1.5 text-xs font-medium ${source === 'custom' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+            onClick={() => setSource('custom')}
+          >
+            Custom
+          </button>
+          <button
+            className={`px-3 py-1.5 text-xs font-medium border-l border-gray-200 ${source === 'mixamo' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+            onClick={() => setSource('mixamo')}
+          >
+            Mixamo
+          </button>
+        </div>
+      </div>
       
       {/* Mode indicator and controls */}
       <div className="flex items-center justify-between mb-4">
@@ -197,15 +215,19 @@ export default function AvatarGrid({
               </div>
             )}
 
-            <div className="aspect-[3/4] relative rounded-t-xl overflow-hidden">
-              <LazyImage filename={filename} />
+            <div className="aspect-[3/4] relative rounded-t-xl overflow-hidden flex items-center justify-center">
+              {source === 'custom' ? (
+                <LazyImage filename={filename} />
+              ) : (
+                <img src="/file.svg" alt="FBX" className="w-10 h-10 opacity-70" />
+              )}
             </div>
             <div className={`text-xs text-center px-2 py-2 font-medium truncate
               ${isSelected(filename) 
                 ? multiCharacterMode ? "text-blue-700" : "text-blue-600"
                 : "text-gray-500"}
             `}>
-              {filename}
+              {source === 'custom' ? filename : filename.split('/').pop()}
             </div>
           </div>
         ))}

@@ -75,6 +75,14 @@ export default function Home() {
   // 🔄 UPDATED: Handle single character selection (for backward compatibility)
   const handleAvatarSelect = async (folderName: string) => {
     try {
+      // Handle clearing selection
+      if (!folderName || folderName === '') {
+        setSelectedAvatars([])
+        console.log("[DEBUG] handleAvatarSelect: Selection cleared");
+        setTrigger((prev) => !prev)
+        return
+      }
+
       // If a Mixamo FBX path is selected, use selectedAvatars to drive Canvas
       if (folderName.toLowerCase().endsWith('.fbx') || folderName.includes('/assets/mixamo/')) {
         setSelectedAvatars([folderName])

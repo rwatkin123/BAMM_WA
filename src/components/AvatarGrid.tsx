@@ -68,6 +68,22 @@ export default function AvatarGrid({
     }
   };
 
+  // Handle source switching and clear selections
+  const handleSourceChange = (newSource: 'custom' | 'mixamo') => {
+    if (newSource !== source) {
+      console.log(`[DEBUG] Switching from ${source} to ${newSource}, clearing selections`);
+      setSource(newSource);
+      // Clear all selections when switching between custom and mixamo
+      setSingleSelected(null);
+      if (onSelectAvatars) {
+        onSelectAvatars([]);
+      }
+      if (onSelectAvatar) {
+        onSelectAvatar(''); // Clear single selection
+      }
+    }
+  };
+
   const clearAllMulti = () => {
     if (onSelectAvatars) {
       onSelectAvatars([]);
@@ -104,13 +120,13 @@ export default function AvatarGrid({
         <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
           <button
             className={`px-3 py-1.5 text-xs font-medium ${source === 'custom' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-            onClick={() => setSource('custom')}
+            onClick={() => handleSourceChange('custom')}
           >
             Custom
           </button>
           <button
             className={`px-3 py-1.5 text-xs font-medium border-l border-gray-200 ${source === 'mixamo' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-            onClick={() => setSource('mixamo')}
+            onClick={() => handleSourceChange('mixamo')}
           >
             Mixamo
           </button>

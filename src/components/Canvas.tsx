@@ -239,6 +239,7 @@ export default function Canvas({
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     rendererRef.current = renderer;
     renderer.toneMapping = THREE.NoToneMapping;
+    renderer.useLegacyLights = true; // Replace deprecated physicallyCorrectLights
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -339,7 +340,7 @@ export default function Canvas({
               const fbx: any = await new Promise((resolve, reject) => {
                 fbxLoader.load(characterName, resolve, undefined, reject);
               });
-              targetModel = { scene: fbx };
+              targetModel = {scene: fbx};
             } else {
               // Custom: Generate and load GLB
               await create_glb(characterName);
@@ -410,10 +411,16 @@ export default function Canvas({
           // Create mixer for each character
           mixers = targetModels.map((targetModel, index) => {
             console.log(`Applying motion to character ${index + 1}`);
-            const mixer = retargetModel(source, targetModel);
+            // Determine if this is a Mixamo character based on the character name
+            console.log(selectedCharacters)
+            const characterName = selectedCharacters[index];
+            const isMixamo = characterName ? (characterName.toLowerCase().endsWith('.fbx') || characterName.includes('/mixamo/')) : false;
+            const mixer = retargetModel(source, targetModel, isMixamo);
+            isMixamo ? normalizeCharacterScale(targetModel, 0.0011) : null;
             return mixer;
           });
 
+          
           mixersRef.current = mixers;
           setDuration(source.clip.duration);
 
@@ -448,6 +455,7 @@ export default function Canvas({
         });
       }
     });
+
 
     // ONE animation/render loop for the whole scene:
     renderer.setAnimationLoop(() => {
@@ -800,39 +808,170 @@ function getSource(sourceModel: any) {
   return { clip, skeleton, mixer };
 }
 
-function retargetModel(source: any, targetModel: any) {
+// Retargeting function for Mixamo characters (FBX files)
+function retargetMixamoModel(source: any, targetModel: any) {
   let targetSkin: any = null;
-  // targetModel.scene.traverse((child: any) => {
-  //   if (!targetSkin && child.isSkinnedMesh) {
-  //     targetSkin = child;
-  //   }
-  // });
-  // console.log('targetSkin', targetSkin);
-  // if (!targetSkin) {
-  //   console.warn('No SkinnedMesh found for target model; using first child as fallback');
-  console.log('targetSkin', targetModel);
-    targetSkin = targetModel.scene.children[1];
-  // }
-  const retargetedClip = SkeletonUtils.retargetClip(targetSkin, source.skeleton, source.clip, {
-    hip: 'Hips',
-    getBoneName: function (bone: any) {
-      //return bone.name;
-       return bone.name.replace(/^mixamorig/, '');
+  
+  // Find the SkinnedMesh in the target model
+  targetModel.scene.traverse((child: any) => {
+    if (!targetSkin && child.isSkinnedMesh) {
+      targetSkin = child;
     }
   });
-  console.log('retargetedClip', retargetedClip);
-  const mixer = new THREE.AnimationMixer(targetSkin);
   
-  // retargetedClip.tracks.forEach((track: any) => {
-  //   if (track.name.includes('Hips') && track.name.endsWith('.position')) {
-  //     const values = track.values.slice();
-  //     const firstY = values[1];
-  //     for (let i = 1; i < values.length; i += 3) {
-  //       values[i] -= firstY;
-  //     }
-  //     track.values = values;
-  //   }
-  // });
+  if (!targetSkin) {
+    console.warn('No SkinnedMesh found for Mixamo target model');
+    return null;
+  }
+  
+  console.log('Retargeting Mixamo model:', targetModel.name);
+  
+  // Mixamo-specific rotation matrices for proper bone alignment
+  const rotateCW180 = new THREE.Matrix4().makeRotationZ(THREE.MathUtils.degToRad(180));
+  const rotateFoot = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(-65), 
+    THREE.MathUtils.degToRad(0), 
+    THREE.MathUtils.degToRad(180)
+  ));
+  const rotateRightArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(112), 
+    THREE.MathUtils.degToRad(-10), 
+    THREE.MathUtils.degToRad(90)
+  ));
+  const rotateRightForeArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(99), 
+    THREE.MathUtils.degToRad(-3), 
+    THREE.MathUtils.degToRad(73)
+  ));
+  const rotateLeftArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(104), 
+    THREE.MathUtils.degToRad(20), 
+    THREE.MathUtils.degToRad(-73)
+  ));
+  const rotateLeftForeArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(68), 
+    THREE.MathUtils.degToRad(-7), 
+    THREE.MathUtils.degToRad(-82)
+  ));
+  const rotateLeftShoulder = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(90), 
+    THREE.MathUtils.degToRad(-11), 
+    THREE.MathUtils.degToRad(-82)
+  ));
+  const rotateRightShoulder = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(100), 
+    THREE.MathUtils.degToRad(-3), 
+    THREE.MathUtils.degToRad(73)
+  ));
+  const rotateLeftHand = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(0), 
+    THREE.MathUtils.degToRad(0), 
+    THREE.MathUtils.degToRad(-90)
+  ));
+  const rotateRightHand = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(0), 
+    THREE.MathUtils.degToRad(0), 
+    THREE.MathUtils.degToRad(90)
+  ));
+
+  const retargetOptions = {
+    hip: 'Hips',
+    getBoneName: function (bone: any) {
+      return bone.name.replace(/^mixamorig/, '');
+    },
+    scale: 100,
+    localOffsets: {
+      'mixamorigLeftUpLeg': rotateCW180,
+      'mixamorigRightUpLeg': rotateCW180,
+      'mixamorigLeftLeg': rotateCW180,
+      'mixamorigRightLeg': rotateCW180,
+      'mixamorigLeftFoot': rotateFoot,
+      'mixamorigRightFoot': rotateFoot,
+      'mixamorigRightShoulder': rotateRightShoulder,
+      'mixamorigLeftShoulder': rotateLeftShoulder,
+      'mixamorigRightArm': rotateRightArm,
+      'mixamorigLeftArm': rotateLeftArm,
+      'mixamorigRightForeArm': rotateRightForeArm,
+      'mixamorigLeftForeArm': rotateLeftForeArm,
+      'mixamorigLeftHand': rotateLeftHand,
+      'mixamorigRightHand': rotateRightHand,
+    },
+  };
+  
+  // Scale the target model for Mixamo
+  // targetModel.scene.scale.setScalar(0.011);
+  
+  const retargetedClip = SkeletonUtils.retargetClip(targetSkin, source.skeleton, source.clip, retargetOptions);
+  console.log('Mixamo retargetedClip:', retargetedClip);
+  
+  const mixer = new THREE.AnimationMixer(targetSkin);
   mixer.clipAction(retargetedClip).play();
   return mixer;
+}
+
+// Retargeting function for custom characters (GLB files)
+function retargetCustomModel(source: any, targetModel: any) {
+  let targetSkin: any = null;
+  
+  // Find the SkinnedMesh in the target model
+  targetModel.scene.traverse((child: any) => {
+    if (!targetSkin && child.isSkinnedMesh) {
+      targetSkin = child;
+    }
+  });
+  
+  if (!targetSkin) {
+    console.warn('No SkinnedMesh found for custom target model');
+    return null;
+  }
+  
+  console.log('Retargeting custom model:', targetModel.name);
+  
+
+
+  const retargetOptions = {
+    hip: 'Hips',
+    scale: 1,
+    getBoneName: function (bone: any) {
+    
+      return bone.name;
+    }
+  };
+  
+  const retargetedClip = SkeletonUtils.retargetClip(targetSkin, source.skeleton, source.clip, retargetOptions);
+  console.log('Custom retargetedClip:', retargetedClip);
+  console.log('Custom retargetedClip tracks:', retargetedClip.tracks.length);
+  console.log('Custom retargetedClip duration:', retargetedClip.duration);
+  
+  // If retargeting failed, try without retargeting options
+  if (retargetedClip.tracks.length === 0) {
+    console.log('Custom retargeting failed, trying without options...');
+    const fallbackClip = SkeletonUtils.retargetClip(targetSkin, source.skeleton, source.clip);
+    console.log('Custom fallback clip:', fallbackClip);
+    if (fallbackClip.tracks.length > 0) {
+      const mixer = new THREE.AnimationMixer(targetSkin);
+      mixer.clipAction(fallbackClip).play();
+      return mixer;
+    }
+  }
+  
+  const mixer = new THREE.AnimationMixer(targetSkin);
+  
+  // Only play if we have tracks
+  if (retargetedClip.tracks.length > 0) {
+    mixer.clipAction(retargetedClip).play();
+  } else {
+    console.error('No animation tracks found after custom retargeting!');
+  }
+  
+  return mixer;
+}
+
+// Main retargeting function that determines which method to use
+function retargetModel(source: any, targetModel: any, isMixamo: boolean = false) {
+  if (isMixamo) {
+    return retargetMixamoModel(source, targetModel);
+  } else {
+    return retargetCustomModel(source, targetModel);
+  }
 }

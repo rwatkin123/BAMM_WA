@@ -75,6 +75,22 @@ export default function Home() {
   // 🔄 UPDATED: Handle single character selection (for backward compatibility)
   const handleAvatarSelect = async (folderName: string) => {
     try {
+      // Handle clearing selection
+      if (!folderName || folderName === '') {
+        setSelectedAvatars([])
+        console.log("[DEBUG] handleAvatarSelect: Selection cleared");
+        setTrigger((prev) => !prev)
+        return
+      }
+
+      // If a Mixamo FBX path is selected, use selectedAvatars to drive Canvas
+      if (folderName.toLowerCase().endsWith('.fbx') || folderName.includes('/assets/mixamo/')) {
+        setSelectedAvatars([folderName])
+        setTrigger((prev) => !prev)
+        return
+      }
+
+      // Otherwise treat as custom and build GLB
       const result = await create_glb(folderName)
       if (result) {
         console.log("[DEBUG] handleAvatarSelect: Avatar loaded, toggling trigger");
@@ -150,10 +166,10 @@ export default function Home() {
               )}
               
               {/* 🔄 UPDATED: Canvas with integrated character selection */}
-                          <Canvas 
+              <Canvas 
                 bvhFile={bvhFile} 
                 trigger={trigger}
-                selectedCharacters={multiCharacterMode ? selectedAvatars : []}
+                selectedCharacters={selectedAvatars}
                 onProgressChange={setProgress}
                 onDurationChange={setDuration}
                 onTrimRangeChange={setTrimRange}

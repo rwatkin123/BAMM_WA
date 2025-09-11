@@ -177,7 +177,7 @@ export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: Chat
   return (
     <form
       onSubmit={isEditing ? handleEditSubmit : handleInitialSubmit}
-      className="w-full h-full bg-transparent flex flex-col gap-4 p-6 justify-between"
+      className="w-full h-full bg-transparent flex flex-col gap-3 p-3 justify-between"
       style={{ minHeight: 340, maxWidth: 340 }}
     >
       <div className="flex flex-col gap-2">

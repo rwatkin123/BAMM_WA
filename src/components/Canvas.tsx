@@ -227,6 +227,7 @@ export default function Canvas({
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), groundMat);
     plane.rotation.x = -Math.PI / 2;
     plane.position.y = 0;
+    plane.receiveShadow = true;
     scene.add(plane);
 
     const camera = new THREE.PerspectiveCamera(
@@ -240,7 +241,8 @@ export default function Canvas({
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     rendererRef.current = renderer;
     renderer.toneMapping = THREE.NoToneMapping;
-    renderer.useLegacyLights = true; // Replace deprecated physicallyCorrectLights
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -256,8 +258,63 @@ export default function Canvas({
     controls.maxPolarAngle = Math.PI / 2; // Allow full 180 degree view above
     controls.target.set(0, 1, 0);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+    // Enhanced lighting setup for better model visibility
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambientLight);
+
+    // Add hemisphere light for more natural lighting
+    const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0xffffff, 0.6);
+    scene.add(hemisphereLight);
+
+    // Add directional light (sun-like)
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight.position.set(10, 10, 5);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 50;
+    directionalLight.shadow.camera.left = -10;
+    directionalLight.shadow.camera.right = 10;
+    directionalLight.shadow.camera.top = 10;
+    directionalLight.shadow.camera.bottom = -10;
+    scene.add(directionalLight);
+
+    // Add point light for additional illumination
+    const pointLight = new THREE.PointLight(0xffffff, 0.7, 100);
+    pointLight.position.set(-10, 5, 10);
+    scene.add(pointLight);
+
+    // Add another point light from the opposite side
+    const pointLight2 = new THREE.PointLight(0xffffff, 0.5, 100);
+    pointLight2.position.set(10, 5, -10);
+    scene.add(pointLight2);
+
+    // Add spotlight focused on character area for dramatic lighting
+    const spotLight = new THREE.SpotLight(0xffffff, 1.2, 50, Math.PI / 6, 0.3, 1);
+    spotLight.position.set(0, 15, 5);
+    spotLight.target.position.set(0, 0, 0);
+    spotLight.castShadow = true;
+    spotLight.shadow.mapSize.width = 1024;
+    spotLight.shadow.mapSize.height = 1024;
+    spotLight.shadow.camera.near = 0.5;
+    spotLight.shadow.camera.far = 50;
+    scene.add(spotLight);
+    scene.add(spotLight.target);
+
+    // Add overhead point lights for better character illumination
+    const overheadLight1 = new THREE.PointLight(0xffffff, 0.8, 30);
+    overheadLight1.position.set(-5, 8, 0);
+    scene.add(overheadLight1);
+
+    const overheadLight2 = new THREE.PointLight(0xffffff, 0.8, 30);
+    overheadLight2.position.set(5, 8, 0);
+    scene.add(overheadLight2);
+
+    // Add warm fill light for character warmth
+    const warmLight = new THREE.PointLight(0xffe4b5, 0.6, 40);
+    warmLight.position.set(0, 6, -8);
+    scene.add(warmLight);
 
     let mixers: THREE.AnimationMixer[] = [];
     modelsRef.current = [];
@@ -289,6 +346,8 @@ export default function Canvas({
             if (child.isSkinnedMesh) {
               child.skeleton.pose();
               child.updateMatrixWorld(true);
+              child.castShadow = true;
+              child.receiveShadow = true;
             }
           });
 
@@ -358,6 +417,8 @@ export default function Canvas({
               if (child.isSkinnedMesh) {
                 child.skeleton.pose();
                 child.updateMatrixWorld(true);
+                child.castShadow = true;
+                child.receiveShadow = true;
               }
             });
 
@@ -414,12 +475,12 @@ export default function Canvas({
             console.log(`Applying motion to character ${index + 1}`);
             // Determine if this is a Mixamo character based on the character name
             console.log(selectedCharacters)
-            const characterName = selectedCharacters[index];
+            const characterName = selectedCharacters[index] || '';
             const isMixamo = characterName ? (characterName.toLowerCase().endsWith('.fbx') || characterName.includes('/mixamo/')) : false;
             const mixer = retargetModel(source, targetModel, isMixamo , characterName);
             isMixamo ? normalizeCharacterScale(targetModel, 0.0011) : null;
             return mixer;
-          });
+          }).filter((mixer): mixer is THREE.AnimationMixer => mixer !== null);
 
           // targetModels.forEach(model => {
           //   model.scene.position.x += 10
@@ -628,173 +689,236 @@ export default function Canvas({
   };
 
   return (
-    <div style={{ position: "relative", height: "100%" }}>
-      <div ref={sceneRef} className="h-full bg-gray-100" />
+    <div style={{ position: "relative", height: "100%" }} className="bg-gradient-to-br from-slate-50 to-slate-100">
+      <div ref={sceneRef} className="h-full" />
       
       {/* Character loading indicator */}
       {loadingCharacters && (
-        <div className="absolute top-4 left-4 bg-blue-600 text-white px-3 py-1 rounded-lg text-sm animate-pulse">
-          Loading {selectedCharacters.length} Characters...
+        <div className="absolute top-6 left-6 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg backdrop-blur-sm border border-blue-500/20 animate-pulse">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
+            <span>Loading {selectedCharacters.length} Character{selectedCharacters.length > 1 ? 's' : ''}...</span>
+          </div>
         </div>
       )}
       
       {/* Character count indicator */}
       {selectedCharacters.length > 0 && !loadingCharacters && (
-        <div className="absolute top-4 left-4 bg-green-600 text-white px-3 py-1 rounded-lg text-sm">
-          {selectedCharacters.length} Character{selectedCharacters.length > 1 ? 's' : ''}: {selectedCharacters.map(char => char.split(' ')[0]).join(', ')}
+        <div className="absolute top-6 left-6 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg backdrop-blur-sm border border-emerald-500/20">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-white rounded-full"></div>
+            <span>{selectedCharacters.length} Character{selectedCharacters.length > 1 ? 's' : ''}: {selectedCharacters.map(char => char.split(' ')[0]).join(', ')}</span>
+          </div>
         </div>
       )}
       
-      {/* Play Controls Card - Bottom Left (moved from dashboard) */}
-      <div className="absolute bottom-6 left-6 w-80 bg-white/70 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100 p-4 z-50">
-        {/* Compact Header */}
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-            <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M8 5v10l8-5-8-5z"/>
-            </svg>
-            Motion
-          </h3>
-          <div className="text-xs text-gray-500 font-mono">
-            {progress.toFixed(1)}s / {duration.toFixed(1)}s
+      {/* Play Controls Card - Bottom Left */}
+      <div className="absolute bottom-6 left-6 w-96 bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6 z-50" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
+        {/* Professional Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
+              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M8 5v10l8-5-8-5z"/>
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">Motion Controller</h3>
+              <p className="text-xs text-gray-500">Animation playback controls</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-sm font-mono text-gray-700 font-medium">
+              {progress.toFixed(1)}s / {duration.toFixed(1)}s
+            </div>
+            <div className="text-xs text-gray-500">
+              {duration > 0 ? `${((progress / duration) * 100).toFixed(0)}%` : '0%'}
+            </div>
           </div>
         </div>
-        {/* Compact Controls Row */}
-        <div className="flex items-center gap-3">
-          {/* Circular Play/Pause Button */}
+        
+        {/* Enhanced Controls Row */}
+        <div className="flex items-center gap-4">
+          {/* Professional Play/Pause Button */}
           <button
             onClick={handlePlayPause}
             disabled={loadingCharacters}
-            className={`w-12 h-12 rounded-full transition-all duration-200 flex items-center justify-center shadow-sm hover:shadow-md
+            className={`w-14 h-14 rounded-2xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95
               ${loadingCharacters 
-                ? 'bg-gray-200 cursor-not-allowed' 
+                ? 'bg-gray-200 cursor-not-allowed text-gray-400' 
                 : isPlaying
-                  ? 'bg-red-500 hover:bg-red-600 text-white'
-                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+                  ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-red-500/25'
+                  : 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-500/25'
               }`}
           >
             {isPlaying ? (
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M6 4h4v12H6V4zm4 0h4v12h-4V4z"/>
               </svg>
             ) : (
-              <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M8 5v10l8-5-8-5z"/>
               </svg>
             )}
           </button>
-          {/* Progress Bar as Slider */}
+          
+          {/* Enhanced Progress Bar */}
           <div className="flex-1">
-            <Slider
-              min={trimRange[0]}
-              max={trimRange[1] || duration}
-              step={0.01}
-              value={[progress]}
-              onValueChange={([val]) => handleSeek(val)}
-              disabled={loadingCharacters || duration === 0}
-            />
+            <div className="mb-2">
+              <Slider
+                min={trimRange[0]}
+                max={trimRange[1] || duration}
+                step={0.01}
+                value={[progress]}
+                onValueChange={([val]) => handleSeek(val)}
+                disabled={loadingCharacters || duration === 0}
+                className="[&_.slider-track]:bg-gradient-to-r [&_.slider-track]:from-blue-200 [&_.slider-track]:to-blue-300 [&_.slider-thumb]:bg-blue-600 [&_.slider-thumb]:border-blue-700"
+              />
+            </div>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>{trimRange[0].toFixed(1)}s</span>
+              <span>{trimRange[1].toFixed(1)}s</span>
+            </div>
           </div>
-          {/* Character Count */}
+          
+          {/* Character Count Badge */}
           {selectedCharacters.length > 1 && (
-            <div className="text-xs text-blue-600 font-medium">
+            <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white px-3 py-1 rounded-lg text-xs font-semibold shadow-lg">
               {selectedCharacters.length} chars
             </div>
           )}
         </div>
       </div>
       
-      {/* --- Smart Card Container --- */}
-      <div className="absolute top-6 right-6 bottom-6 flex flex-col gap-3 z-50">
+      {/* --- Professional Card Container --- */}
+      <div className="absolute top-6 right-6 bottom-6 flex flex-col gap-4 z-50">
         {/* Card 1: Credits & Tokens */}
-        <div className="w-80 bg-white/60 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-2xl" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🪙</span>
-              <span className="font-semibold text-sm text-gray-800">Credits</span>
+        <div className="w-80 bg-white/80 backdrop-blur-xl shadow-2xl border border-white/20 rounded-2xl px-6 py-5 transition-all duration-300 hover:shadow-2xl hover:bg-white/90" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center shadow-lg">
+                <span className="text-white text-sm">🪙</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm text-gray-800">Credits</h3>
+                <p className="text-xs text-gray-500">Token management</p>
+              </div>
             </div>
-            <button className="flex items-center gap-1 px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs font-medium transition-colors">
+            <button className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-lg text-xs font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105">
               <span className="text-sm">🪙</span>
               Refill
             </button>
           </div>
           
-          <div className="space-y-3">
+          <div className="space-y-4">
             {/* Token Balance */}
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-gray-600">Available Tokens</span>
-              <span className="text-sm font-semibold text-gray-800">1,247</span>
+            <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-3">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs font-medium text-gray-600">Available Tokens</span>
+                <span className="text-lg font-bold text-gray-800">1,247</span>
+              </div>
+              <div className="text-xs text-gray-500">Ready for motion generation</div>
             </div>
             
             {/* Motion Generation Capacity */}
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-gray-600">Motion Generations</span>
-              <span className="text-sm font-semibold text-blue-600">~24 remaining</span>
+            <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-3">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs font-medium text-gray-600">Motion Generations</span>
+                <span className="text-lg font-bold text-blue-600">~24 remaining</span>
+              </div>
+              <div className="text-xs text-gray-500">Based on current usage</div>
             </div>
             
-            {/* Progress Bar */}
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-green-500 to-blue-500 h-full rounded-full transition-all duration-300"
-                style={{ width: '78%' }}
-              ></div>
+            {/* Enhanced Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>Usage Progress</span>
+                <span>78%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
+                <div 
+                  className="bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 h-full rounded-full transition-all duration-500 shadow-sm"
+                  style={{ width: '78%' }}
+                ></div>
+              </div>
             </div>
             
             {/* Usage Stats */}
-            <div className="flex justify-between text-xs text-gray-500">
+            <div className="flex justify-between text-xs text-gray-500 bg-gray-50 rounded-lg p-2">
               <span>Used: 342 tokens</span>
               <span>Total: 1,589 tokens</span>
             </div>
           </div>
         </div>
 
-        {/* Card 3: Character Mode Toggle */}
-        <div className="w-80 bg-white/60 shadow-2xl border border-gray-100 rounded-2xl px-8 py-4 backdrop-blur-lg transition-all duration-300 hover:shadow-2xl" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">👥</span>
-              <span className="font-semibold text-sm text-gray-800">Character Mode</span>
+        {/* Card 2: Character Mode Toggle */}
+        <div className="w-80 bg-white/80 backdrop-blur-xl shadow-2xl border border-white/20 rounded-2xl px-6 py-5 transition-all duration-300 hover:shadow-2xl hover:bg-white/90" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg">
+                <span className="text-white text-sm">👥</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm text-gray-800">Character Mode</h3>
+                <p className="text-xs text-gray-500">Animation configuration</p>
+              </div>
             </div>
           </div>
           
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-center mb-4">
             <button
               onClick={() => onMultiCharacterModeChange && onMultiCharacterModeChange(!multiCharacterMode)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg shadow-md transition-all text-sm font-medium
+              className={`flex items-center gap-3 px-6 py-3 rounded-xl shadow-lg transition-all duration-300 text-sm font-semibold transform hover:scale-105 active:scale-95
                 ${multiCharacterMode 
-                  ? 'bg-blue-500 hover:bg-blue-600 text-white' 
-                  : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-500/25' 
+                  : 'bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 border border-gray-300 shadow-gray-500/10'
                 }`}
             >
               {multiCharacterMode ? (
                 <>
-                  <span className="text-base">👥</span>
+                  <span className="text-lg">👥</span>
                   Multi Character
                 </>
               ) : (
                 <>
-                  <span className="text-base">👤</span>
+                  <span className="text-lg">👤</span>
                   Single Character
                 </>
               )}
             </button>
           </div>
           
-          <div className="mt-3 text-xs text-gray-500 text-center">
-            {multiCharacterMode 
-              ? "Select multiple characters to animate together" 
-              : "Select one character at a time"
-            }
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-600 text-center font-medium">
+              {multiCharacterMode 
+                ? "Select multiple characters to animate together" 
+                : "Select one character at a time"
+              }
+            </div>
           </div>
         </div>
 
-        {/* Card 3: Motion Chatbot - Flex to align bottom with play card */}
-        <div className="w-80 flex-1 bg-white/60 shadow-2xl border border-gray-100 rounded-2xl backdrop-blur-lg transition-all duration-300 hover:shadow-2xl overflow-hidden" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
+        {/* Card 3: Motion Chatbot */}
+        <div className="w-80 flex-1 bg-white/80 backdrop-blur-xl shadow-2xl border border-white/20 rounded-2xl transition-all duration-300 hover:shadow-2xl hover:bg-white/90 overflow-hidden" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
+          <div className="p-6 pb-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-lg">
+                <span className="text-white text-sm">🤖</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm text-gray-800">Motion AI</h3>
+                <p className="text-xs text-gray-500">Generate animations</p>
+              </div>
+            </div>
+          </div>
           {onFileReceived && onSend && onAvatarUpdate && (
-            <Chatbot
-              onFileReceived={onFileReceived}
-              onSend={onSend}
-              onAvatarUpdate={onAvatarUpdate}
-            />
+            <div className="px-3 pb-3">
+              <Chatbot
+                onFileReceived={onFileReceived}
+                onSend={onSend}
+                onAvatarUpdate={onAvatarUpdate}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -818,7 +942,7 @@ function getTargetSkin(targetModel: any, characterName: string) {
   console.log('mixamo_targets:', mixamo_targets);
   const targetSkin = mixamo_targets.find(target => target.charactername == characterName);
   console.log('Target skin:', targetSkin?.targetskin);
-  return targetModel.scene.children[targetSkin?.targetskin];
+  return targetModel.scene.children[targetSkin?.targetskin || 0];
 }
 
 
@@ -933,7 +1057,7 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
       // zero out Y movement of feet
       const values = (track as THREE.VectorKeyframeTrack).values.slice();
       for (let i = 1; i < values.length; i += 3) values[i] = 0;
-      return new THREE.VectorKeyframeTrack(track.name, (track as any).times, values);
+      return new THREE.VectorKeyframeTrack(track.name, (track as any).times, Array.from(values));
     }
     return track;
   });

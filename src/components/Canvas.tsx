@@ -259,15 +259,15 @@ export default function Canvas({
     controls.target.set(0, 1, 0);
 
     // Enhanced lighting setup for better model visibility
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambientLight);
 
     // Add hemisphere light for more natural lighting
-    const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0xffffff, 0.4);
+    const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0xffffff, 0.6);
     scene.add(hemisphereLight);
 
     // Add directional light (sun-like)
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
     directionalLight.position.set(10, 10, 5);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
@@ -281,14 +281,40 @@ export default function Canvas({
     scene.add(directionalLight);
 
     // Add point light for additional illumination
-    const pointLight = new THREE.PointLight(0xffffff, 0.5, 100);
+    const pointLight = new THREE.PointLight(0xffffff, 0.7, 100);
     pointLight.position.set(-10, 5, 10);
     scene.add(pointLight);
 
     // Add another point light from the opposite side
-    const pointLight2 = new THREE.PointLight(0xffffff, 0.3, 100);
+    const pointLight2 = new THREE.PointLight(0xffffff, 0.5, 100);
     pointLight2.position.set(10, 5, -10);
     scene.add(pointLight2);
+
+    // Add spotlight focused on character area for dramatic lighting
+    const spotLight = new THREE.SpotLight(0xffffff, 1.2, 50, Math.PI / 6, 0.3, 1);
+    spotLight.position.set(0, 15, 5);
+    spotLight.target.position.set(0, 0, 0);
+    spotLight.castShadow = true;
+    spotLight.shadow.mapSize.width = 1024;
+    spotLight.shadow.mapSize.height = 1024;
+    spotLight.shadow.camera.near = 0.5;
+    spotLight.shadow.camera.far = 50;
+    scene.add(spotLight);
+    scene.add(spotLight.target);
+
+    // Add overhead point lights for better character illumination
+    const overheadLight1 = new THREE.PointLight(0xffffff, 0.8, 30);
+    overheadLight1.position.set(-5, 8, 0);
+    scene.add(overheadLight1);
+
+    const overheadLight2 = new THREE.PointLight(0xffffff, 0.8, 30);
+    overheadLight2.position.set(5, 8, 0);
+    scene.add(overheadLight2);
+
+    // Add warm fill light for character warmth
+    const warmLight = new THREE.PointLight(0xffe4b5, 0.6, 40);
+    warmLight.position.set(0, 6, -8);
+    scene.add(warmLight);
 
     let mixers: THREE.AnimationMixer[] = [];
     modelsRef.current = [];

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { BVHLoader } from "three/addons/loaders/BVHLoader.js";
@@ -13,6 +13,7 @@ import { useCharacterControls } from "@/contexts/CharacterControlsContext";
 import mixamo_targets from "@/lib/mixamo_targets.json";
 import { findPrimaryMixamoRig } from "@/lib/getSkin";
 import { saveAs } from "file-saver";
+import { parseAssetReference } from "@/lib/assetReference";
 
 function getNodePath(node: THREE.Object3D, root: THREE.Object3D): string {
   const segments: string[] = [];
@@ -59,6 +60,12 @@ type RetargetResult = {
   mixer: THREE.AnimationMixer;
   clip: THREE.AnimationClip;
 };
+
+type ModelMetadata = {
+  displayName: string;
+  isMixamo: boolean;
+  source: string;
+};
 interface CanvasProps {
   bvhFile: string | null;
   trigger?: boolean;
@@ -66,6 +73,7 @@ interface CanvasProps {
   onProgressChange?: (progress: number) => void;
   onDurationChange?: (duration: number) => void;
   onTrimRangeChange?: (trimRange: number[]) => void;
+  onPlayStateChange?: (playing: boolean) => void;
   multiCharacterMode?: boolean;
   onMultiCharacterModeChange?: (mode: boolean) => void;
   onFileReceived?: (filename: string) => void;
@@ -75,9 +83,15 @@ interface CanvasProps {
     exportSelectedToGLB: () => Promise<void>;
     exportCurrentBVH: () => Promise<void>;
   }) => void;
+  onPlaybackHandlersReady?: (handlers: {
+    play: () => void;
+    pause: () => void;
+    seek: (time: number) => void;
+    toggle: () => void;
+  }) => void;
 }
 
-export default function Canvas({ 
+const CanvasComponent = ({ 
   bvhFile, 
   trigger, 
   selectedCharacters = [],
@@ -89,8 +103,10 @@ export default function Canvas({
   onFileReceived,
   onSend,
   onAvatarUpdate,
-  onExportHandlersReady
-}: CanvasProps) {
+  onExportHandlersReady,
+  onPlaybackHandlersReady,
+  onPlayStateChange,
+}: CanvasProps) => {
 
   const sceneRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -109,7 +125,7 @@ export default function Canvas({
   // Store references to loaded models for transform updates
   const modelsRef = useRef<THREE.Object3D[]>([]);
   // Track metadata for each loaded model (character name, source type)
-  const modelMetadataRef = useRef<{ characterName: string; isMixamo: boolean }[]>([]);
+  const modelMetadataRef = useRef<ModelMetadata[]>([]);
   // Store skeleton helpers
   const skeletonHelpersRef = useRef<THREE.Object3D[]>([]);
   // Store reference to THREE.js scene
@@ -167,15 +183,16 @@ export default function Canvas({
       exportGroup.add(clone);
 
       const metadata = modelMetadataRef.current[index] || {
-        characterName: selectedCharacters[index] || `character_${index + 1}`,
+        displayName: selectedCharacters[index] || `character_${index + 1}`,
         isMixamo: false,
+        source: selectedCharacters[index] || `character_${index + 1}`,
       };
 
       const targetWrapper = { scene: clone };
       let exportResult: RetargetResult | null;
 
       if (metadata.isMixamo) {
-        exportResult = retargetMixamoModel(source, targetWrapper, metadata.characterName);
+        exportResult = retargetMixamoModel(source, targetWrapper, metadata.source);
         normalizeCharacterScale(targetWrapper, 0.0011);
       } else {
         exportResult = retargetCustomModel(source, targetWrapper);
@@ -238,7 +255,7 @@ export default function Canvas({
     const blob = await response.blob();
     let filename = bvhUrl.split('/').pop() || 'animation.bvh';
     if (!/\.bvh$/i.test(filename)) {
-      const metaName = modelMetadataRef.current[0]?.characterName || 'animation';
+      const metaName = modelMetadataRef.current[0]?.displayName || 'animation';
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       filename = `${metaName}-${stamp}.bvh`;
     }
@@ -411,9 +428,15 @@ export default function Canvas({
     plane.receiveShadow = true;
     scene.add(plane);
 
+    const container = sceneRef.current;
+    const { clientWidth, clientHeight } = container;
+
+    const viewportWidth = clientWidth > 0 ? clientWidth : window.innerWidth;
+    const viewportHeight = clientHeight > 0 ? clientHeight : window.innerHeight;
+
     const camera = new THREE.PerspectiveCamera(
       45,
-      window.innerWidth / window.innerHeight,
+      viewportWidth / viewportHeight,
       1,
       2000
     );
@@ -425,12 +448,14 @@ export default function Canvas({
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(viewportWidth, viewportHeight, false);
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
 
-    if (sceneRef.current.firstChild) {
-      sceneRef.current.removeChild(sceneRef.current.firstChild);
+    if (container.firstChild) {
+      container.removeChild(container.firstChild);
     }
-    sceneRef.current.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.minDistance = 0;
@@ -523,7 +548,7 @@ export default function Canvas({
 
           scene.add(targetModel.scene);
           modelsRef.current = [targetModel.scene];
-          modelMetadataRef.current = [{ characterName: "default", isMixamo: false }];
+          modelMetadataRef.current = [{ displayName: "default", isMixamo: false, source: '/mesh/mesh.glb' }];
 
 
           targetModel.scene.traverse((child: any) => {
@@ -573,22 +598,28 @@ export default function Canvas({
         setLoadingCharacters(true);
         
         for (let i = 0; i < selectedCharacters.length; i++) {
-          const characterName = selectedCharacters[i];
-          const isMixamo = characterName ? (characterName.toLowerCase().endsWith('.fbx') || characterName.includes('/mixamo/')) : false;
+          const reference = selectedCharacters[i];
+          const asset = parseAssetReference(reference);
+          const label = asset.filename || reference;
+          const extension = asset.extension;
+          const isMixamoSource = Boolean(extension === 'fbx' || reference.includes('/mixamo/'));
           const position = getCharacterPosition(i, selectedCharacters.length);
 
           try {
-            console.log(`Loading character ${i + 1}/${selectedCharacters.length}: ${characterName}`);
+            console.log(`Loading character ${i + 1}/${selectedCharacters.length}: ${label}`);
             let targetModel: any;
-            if (isMixamo) {
-              // Load FBX model directly (Mixamo)
+
+            if (isMixamoSource) {
               const fbx: any = await new Promise((resolve, reject) => {
-                fbxLoader.load(characterName, resolve, undefined, reject);
+                fbxLoader.load(asset.url, resolve, undefined, reject);
               });
-              targetModel = {scene: fbx};
+              targetModel = { scene: fbx };
+            } else if (extension === 'glb' || asset.url.startsWith('blob:')) {
+              targetModel = await new Promise((resolve, reject) => {
+                loader.load(asset.url, resolve, undefined, reject);
+              });
             } else {
-              // Custom: Generate and load GLB
-              await create_glb(characterName);
+              await create_glb(reference);
               await new Promise(resolve => setTimeout(resolve, 500));
               targetModel = await new Promise((resolve, reject) => {
                 loader.load(`/mesh/mesh.glb?t=${Date.now()}&char=${i}`, resolve, undefined, reject);
@@ -597,7 +628,11 @@ export default function Canvas({
 
             scene.add(targetModel.scene);
             modelsRef.current.push(targetModel.scene);
-            modelMetadataRef.current.push({ characterName, isMixamo });
+            modelMetadataRef.current.push({
+              displayName: label,
+              isMixamo: isMixamoSource,
+              source: reference,
+            });
 
             targetModel.scene.traverse((child: any) => {
               if (child.isSkinnedMesh) {
@@ -609,14 +644,13 @@ export default function Canvas({
             });
 
             const { scaleFactor } = normalizeCharacterScale(targetModel, 2.0);
-            console.log(`Character ${i + 1} (${characterName}) scaled by: ${scaleFactor.toFixed(3)}`);
+            console.log(`Character ${i + 1} (${label}) scaled by: ${scaleFactor.toFixed(3)}`);
 
             targetModel.scene.position.x += position[0];
             targetModel.scene.position.z += position[2];
-            
+
             targetModels.push(targetModel);
-            
-            // Add skeleton helper if enabled
+
             if (showSkeleton) {
               targetModel.scene.traverse((child: any) => {
                 if (child.isSkinnedMesh) {
@@ -627,7 +661,7 @@ export default function Canvas({
               });
             }
           } catch (error) {
-            console.error(`Failed to load character ${characterName}:`, error);
+            console.error(`Failed to load character ${label}:`, error);
           }
         }
 
@@ -661,13 +695,15 @@ export default function Canvas({
 
           // Create mixer for each character
           const retargetResults = targetModels.map((targetModel, index) => {
-            console.log(`Applying motion to character ${index + 1}`);
             const metadata = modelMetadataRef.current[index] || {
-              characterName: selectedCharacters[index] || '',
+              displayName: selectedCharacters[index] || '',
               isMixamo: false,
+              source: selectedCharacters[index] || '',
             };
-            const { characterName, isMixamo } = metadata;
-            const result = retargetModel(source, targetModel, isMixamo , characterName);
+            const { displayName, isMixamo, source: characterKey } = metadata;
+            console.log(`Applying motion to character ${index + 1}: ${displayName}`);
+            const retargetName = isMixamo ? characterKey : displayName;
+            const result = retargetModel(source, targetModel, isMixamo , retargetName);
             if (result && isMixamo) {
               normalizeCharacterScale(targetModel, 0.0011);
             }
@@ -743,14 +779,28 @@ export default function Canvas({
     });
 
     const onWindowResize = () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      if (!sceneRef.current) return;
+      const { clientWidth: width, clientHeight: height } = sceneRef.current;
+      if (height === 0 || width === 0) return;
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(width, height, false);
     };
 
     window.addEventListener("resize", onWindowResize);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && sceneRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        onWindowResize();
+      });
+      resizeObserver.observe(sceneRef.current);
+    }
     return () => {
       window.removeEventListener("resize", onWindowResize);
+      if (resizeObserver && sceneRef.current) {
+        resizeObserver.unobserve(sceneRef.current);
+      }
       renderer.setAnimationLoop(null);
       renderer.dispose();
       mixers.forEach(mixer => mixer.stopAllAction());
@@ -804,11 +854,11 @@ export default function Canvas({
   }, [showSkeleton]);
 
   // 🔧 FIXED Play/Pause Handler with Debug Logging
-  const handlePlayPause = () => {
+  const handlePlayPause = useCallback(() => {
     const mixers = mixersRef.current;
-    
+
     console.log("Play button clicked, mixers:", mixers.length);
-    
+
     if (mixers.length > 0) {
       if (isPlaying) {
         // PAUSE: Stop all mixers
@@ -855,11 +905,14 @@ export default function Canvas({
     }
     
     // Toggle play state
-    setIsPlaying(!isPlaying);
-    console.log("Play state changed to:", !isPlaying);
-  };
+    const nextState = !isPlaying;
+    setIsPlaying(nextState);
+    isPlayingRef.current = nextState;
+    onPlayStateChange?.(nextState);
+    console.log("Play state changed to:", nextState);
+  }, [trimRange, onPlayStateChange, isPlaying]);
 
-  const handleSeek = (newTime: number) => {
+  const handleSeek = useCallback((newTime: number) => {
     const clampedTime = Math.max(trimRange[0], Math.min(newTime, trimRange[1]));
     const mixers = mixersRef.current;
     mixers.forEach(mixer => {
@@ -872,7 +925,37 @@ export default function Canvas({
     if (!isPlayingRef.current && rendererRef.current && sceneRef_three.current && cameraRef.current) {
       rendererRef.current.render(sceneRef_three.current, cameraRef.current);
     }
-  };
+  }, [trimRange]);
+
+  useEffect(() => {
+    if (onProgressChange) {
+      onProgressChange(progress);
+    }
+  }, [progress, onProgressChange]);
+
+  useEffect(() => {
+    if (onPlaybackHandlersReady) {
+      const handlers = {
+        play: () => {
+          if (!isPlayingRef.current) {
+            handlePlayPause();
+          }
+        },
+        pause: () => {
+          if (isPlayingRef.current) {
+            handlePlayPause();
+          }
+        },
+        seek: (time: number) => {
+          handleSeek(time);
+        },
+        toggle: () => {
+          handlePlayPause();
+        },
+      };
+      onPlaybackHandlersReady(handlers);
+    }
+  }, [onPlaybackHandlersReady, handlePlayPause, handleSeek]);
 
   const handleTrimRangeChange = (newRange: number[]) => {
     setTrimRange([newRange[0], newRange[1]] as [number, number]);
@@ -1123,7 +1206,11 @@ export default function Canvas({
       </div>
     </div>
   );
-}
+};
+
+const Canvas = React.memo(CanvasComponent);
+
+export default Canvas;
 
 // Helper functions remain the same
 function getSource(sourceModel: any) {
@@ -1141,7 +1228,15 @@ function getTargetSkin(targetModel: any, characterName: string) {
   console.log('mixamo_targets:', mixamo_targets);
   const targetSkin = mixamo_targets.find(target => target.charactername == characterName);
   console.log('Target skin:', targetSkin?.targetskin);
-  return targetModel.scene.children[targetSkin?.targetskin || 0];
+  let candidate = targetSkin ? targetModel.scene.children[targetSkin.targetskin] : undefined;
+  if (!candidate) {
+    targetModel.scene.traverse((child: any) => {
+      if (!candidate && child.isSkinnedMesh) {
+        candidate = child;
+      }
+    });
+  }
+  return candidate;
 }
 
 

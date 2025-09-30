@@ -6,7 +6,6 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
-import { Slider } from "./ui/slider";
 import create_glb from "./create_glb";
 import Chatbot from "./Chatbot";
 import { useCharacterControls } from "@/contexts/CharacterControlsContext";
@@ -98,8 +97,6 @@ const CanvasComponent = ({
   onProgressChange,
   onDurationChange,
   onTrimRangeChange,
-  multiCharacterMode,
-  onMultiCharacterModeChange,
   onFileReceived,
   onSend,
   onAvatarUpdate,
@@ -957,244 +954,104 @@ const CanvasComponent = ({
     }
   }, [onPlaybackHandlersReady, handlePlayPause, handleSeek]);
 
-  const handleTrimRangeChange = (newRange: number[]) => {
-    setTrimRange([newRange[0], newRange[1]] as [number, number]);
-    let currentProgress = progress;
-    
-    if (currentProgress < newRange[0]) currentProgress = newRange[0];
-    if (currentProgress > newRange[1]) currentProgress = newRange[1];
-    
-    const mixers = mixersRef.current;
-    mixers.forEach(mixer => mixer.setTime(currentProgress));
-    if (audioRef.current) audioRef.current.currentTime = currentProgress;
-    setProgress(currentProgress);
-  };
-
   return (
-    <div style={{ position: "relative", height: "100%" }} className="bg-gradient-to-br from-slate-50 to-slate-100">
+    <div style={{ position: "relative", height: "100%" }} className="bg-slate-50">
       <div ref={sceneRef} className="h-full" />
       
-      {/* Character loading indicator */}
-      {loadingCharacters && (
-        <div className="absolute top-6 left-6 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg backdrop-blur-sm border border-blue-500/20 animate-pulse">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
-            <span>Loading {selectedCharacters.length} Character{selectedCharacters.length > 1 ? 's' : ''}...</span>
-          </div>
-        </div>
-      )}
-      
-      {/* Character count indicator */}
-      {selectedCharacters.length > 0 && !loadingCharacters && (
-        <div className="absolute top-6 left-6 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg backdrop-blur-sm border border-emerald-500/20">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-white rounded-full"></div>
-            <span>{selectedCharacters.length} Character{selectedCharacters.length > 1 ? 's' : ''}: {selectedCharacters.map(char => char.split(' ')[0]).join(', ')}</span>
-          </div>
-        </div>
-      )}
-      
-      {/* Play Controls Card - Bottom Left */}
-      <div className="absolute bottom-6 left-6 w-96 bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6 z-50" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-        {/* Professional Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
-              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M8 5v10l8-5-8-5z"/>
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-800">Motion Controller</h3>
-              <p className="text-xs text-gray-500">Animation playback controls</p>
+      <div className="absolute top-6 left-6 z-50 flex max-w-xs flex-col gap-3">
+        {loadingCharacters && (
+          <div className="rounded-xl border border-slate-200 bg-white/90 px-4 py-2 text-sm text-slate-600 shadow-sm backdrop-blur">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+              <span>Loading {selectedCharacters.length} character{selectedCharacters.length !== 1 ? 's' : ''}...</span>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-sm font-mono text-gray-700 font-medium">
-              {progress.toFixed(1)}s / {duration.toFixed(1)}s
+        )}
+
+        {selectedCharacters.length > 0 && !loadingCharacters && (
+          <div className="rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Characters</div>
+            <div className="mt-1 text-sm font-medium text-slate-700">
+              {selectedCharacters.length} {selectedCharacters.length === 1 ? 'character' : 'characters'}
             </div>
-            <div className="text-xs text-gray-500">
-              {duration > 0 ? `${((progress / duration) * 100).toFixed(0)}%` : '0%'}
-            </div>
-          </div>
-        </div>
-        
-        {/* Enhanced Controls Row */}
-        <div className="flex items-center gap-4">
-          {/* Professional Play/Pause Button */}
-          <button
-            onClick={handlePlayPause}
-            disabled={loadingCharacters}
-            className={`w-14 h-14 rounded-2xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95
-              ${loadingCharacters 
-                ? 'bg-gray-200 cursor-not-allowed text-gray-400' 
-                : isPlaying
-                  ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-red-500/25'
-                  : 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-500/25'
-              }`}
-          >
-            {isPlaying ? (
-              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6 4h4v12H6V4zm4 0h4v12h-4V4z"/>
-              </svg>
-            ) : (
-              <svg className="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M8 5v10l8-5-8-5z"/>
-              </svg>
-            )}
-          </button>
-          
-          {/* Enhanced Progress Bar */}
-          <div className="flex-1">
-            <div className="mb-2">
-              <Slider
-                min={trimRange[0]}
-                max={trimRange[1] || duration}
-                step={0.01}
-                value={[progress]}
-                onValueChange={([val]) => handleSeek(val)}
-                disabled={loadingCharacters || duration === 0}
-                className="[&_.slider-track]:bg-gradient-to-r [&_.slider-track]:from-blue-200 [&_.slider-track]:to-blue-300 [&_.slider-thumb]:bg-blue-600 [&_.slider-thumb]:border-blue-700"
-              />
-            </div>
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>{trimRange[0].toFixed(1)}s</span>
-              <span>{trimRange[1].toFixed(1)}s</span>
+            <div className="mt-1 text-xs text-slate-500">
+              {selectedCharacters.map(char => char.split(' ')[0]).join(', ')}
             </div>
           </div>
-          
-          {/* Character Count Badge */}
-          {selectedCharacters.length > 1 && (
-            <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white px-3 py-1 rounded-lg text-xs font-semibold shadow-lg">
-              {selectedCharacters.length} chars
-            </div>
-          )}
-        </div>
+        )}
       </div>
       
-      {/* --- Professional Card Container --- */}
-      <div className="absolute top-6 right-6 bottom-6 flex flex-col gap-4 z-50">
+      {/* --- Overlays: Insights & Tools --- */}
+      <div className="absolute top-6 right-6 bottom-6 z-50 flex flex-col gap-4">
         {/* Card 1: Credits & Tokens */}
-        <div className="w-80 bg-white/80 backdrop-blur-xl shadow-2xl border border-white/20 rounded-2xl px-6 py-5 transition-all duration-300 hover:shadow-2xl hover:bg-white/90" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-          <div className="flex items-center justify-between mb-4">
+        <div className="w-72 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-lg backdrop-blur">
+          <div className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center shadow-lg">
-                <span className="text-white text-sm">🪙</span>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                🪙
               </div>
               <div>
-                <h3 className="font-semibold text-sm text-gray-800">Credits</h3>
-                <p className="text-xs text-gray-500">Token management</p>
+                <h3 className="text-sm font-semibold text-slate-800">Credits</h3>
+                <p className="text-xs text-slate-500">Token management</p>
               </div>
             </div>
-            <button className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-lg text-xs font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105">
-              <span className="text-sm">🪙</span>
+            <button
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100"
+              type="button"
+            >
               Refill
             </button>
           </div>
-          
-          <div className="space-y-4">
-            {/* Token Balance */}
-            <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-3">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-xs font-medium text-gray-600">Available Tokens</span>
-                <span className="text-lg font-bold text-gray-800">1,247</span>
+
+          <div className="space-y-4 text-slate-600">
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-slate-500">Available tokens</span>
+                <span className="text-base font-semibold text-slate-800">1,247</span>
               </div>
-              <div className="text-xs text-gray-500">Ready for motion generation</div>
+              <div className="mt-1 text-xs text-slate-400">Ready for motion generation</div>
             </div>
-            
-            {/* Motion Generation Capacity */}
-            <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-3">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-xs font-medium text-gray-600">Motion Generations</span>
-                <span className="text-lg font-bold text-blue-600">~24 remaining</span>
+
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <div className="flex items-baseline justify-between text-xs">
+                <span className="font-medium text-slate-500">Motion generations</span>
+                <span className="text-base font-semibold text-slate-800">~24 remaining</span>
               </div>
-              <div className="text-xs text-gray-500">Based on current usage</div>
+              <div className="mt-1 text-xs text-slate-400">Based on current usage</div>
             </div>
-            
-            {/* Enhanced Progress Bar */}
+
             <div className="space-y-2">
-              <div className="flex justify-between text-xs text-gray-600">
-                <span>Usage Progress</span>
-                <span>78%</span>
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Usage progress</span>
+                <span className="font-medium text-slate-700">78%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
-                <div 
-                  className="bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 h-full rounded-full transition-all duration-500 shadow-sm"
-                  style={{ width: '78%' }}
-                ></div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                <div className="h-full rounded-full bg-blue-500" style={{ width: '78%' }}></div>
               </div>
             </div>
-            
-            {/* Usage Stats */}
-            <div className="flex justify-between text-xs text-gray-500 bg-gray-50 rounded-lg p-2">
+
+            <div className="flex justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
               <span>Used: 342 tokens</span>
               <span>Total: 1,589 tokens</span>
             </div>
           </div>
         </div>
 
-        {/* Card 2: Character Mode Toggle */}
-        <div className="w-80 bg-white/80 backdrop-blur-xl shadow-2xl border border-white/20 rounded-2xl px-6 py-5 transition-all duration-300 hover:shadow-2xl hover:bg-white/90" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-          <div className="flex items-center justify-between mb-4">
+        {/* Card 2: Motion Chatbot */}
+        <div className="w-72 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-lg backdrop-blur">
+          <div className="border-b border-slate-200 px-6 py-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg">
-                <span className="text-white text-sm">👥</span>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                🤖
               </div>
               <div>
-                <h3 className="font-semibold text-sm text-gray-800">Character Mode</h3>
-                <p className="text-xs text-gray-500">Animation configuration</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-center mb-4">
-            <button
-              onClick={() => onMultiCharacterModeChange && onMultiCharacterModeChange(!multiCharacterMode)}
-              className={`flex items-center gap-3 px-6 py-3 rounded-xl shadow-lg transition-all duration-300 text-sm font-semibold transform hover:scale-105 active:scale-95
-                ${multiCharacterMode 
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-500/25' 
-                  : 'bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 border border-gray-300 shadow-gray-500/10'
-                }`}
-            >
-              {multiCharacterMode ? (
-                <>
-                  <span className="text-lg">👥</span>
-                  Multi Character
-                </>
-              ) : (
-                <>
-                  <span className="text-lg">👤</span>
-                  Single Character
-                </>
-              )}
-            </button>
-          </div>
-          
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-3">
-            <div className="text-xs text-gray-600 text-center font-medium">
-              {multiCharacterMode 
-                ? "Select multiple characters to animate together" 
-                : "Select one character at a time"
-              }
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Motion Chatbot */}
-        <div className="w-80 flex-1 bg-white/80 backdrop-blur-xl shadow-2xl border border-white/20 rounded-2xl transition-all duration-300 hover:shadow-2xl hover:bg-white/90 overflow-hidden" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-          <div className="p-6 pb-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-lg">
-                <span className="text-white text-sm">🤖</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-sm text-gray-800">Motion AI</h3>
-                <p className="text-xs text-gray-500">Generate animations</p>
+                <h3 className="text-sm font-semibold text-slate-800">Motion AI</h3>
+                <p className="text-xs text-slate-500">Generate animations</p>
               </div>
             </div>
           </div>
           {onFileReceived && onSend && onAvatarUpdate && (
-            <div className="px-3 pb-3">
+            <div className="px-4 py-4">
               <Chatbot
                 onFileReceived={onFileReceived}
                 onSend={onSend}

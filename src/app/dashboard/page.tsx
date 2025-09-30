@@ -28,6 +28,7 @@ export default function Home() {
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
   const [trimRange, setTrimRange] = useState([0, 0])
+  const [exportHandlers, setExportHandlers] = useState<{ exportSelectedToGLB: () => Promise<void>; exportCurrentBVH: () => Promise<void> } | null>(null)
   
 
   
@@ -153,7 +154,12 @@ export default function Home() {
           )}
           
           {activePanel === "import" && <ImportPanel />}
-          {activePanel === "export" && <ExportPanel />}
+          {activePanel === "export" && (
+            <ExportPanel
+              onExportGLB={exportHandlers?.exportSelectedToGLB}
+              onExportBVH={exportHandlers?.exportCurrentBVH}
+            />
+          )}
           
           <div className="flex-grow flex flex-col overflow-hidden relative">
             <div className="flex-grow overflow-hidden relative">
@@ -178,6 +184,7 @@ export default function Home() {
                 onFileReceived={handleFileReceived}
                 onSend={handleSend}
                 onAvatarUpdate={handleAvatarUpdate}
+                onExportHandlersReady={setExportHandlers}
               />
             </div>
           </div>

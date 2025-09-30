@@ -1,15 +1,46 @@
 import { useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 
-export default function ExportPanel() {
+interface ExportPanelProps {
+  onExportGLB?: () => Promise<void>;
+  onExportBVH?: () => Promise<void>;
+}
+
+export default function ExportPanel({ onExportGLB, onExportBVH }: ExportPanelProps) {
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
 
   const formats = ["GLB", "USDZ", "FBX", "BVH"];
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!selectedFormat) return;
-    console.log(`Exporting as ${selectedFormat}`);
-    // TODO: trigger actual export logic
+
+    const handler = selectedFormat === "GLB" ? onExportGLB
+      : selectedFormat === "BVH" ? onExportBVH
+      : undefined;
+
+    if (!handler) {
+      setStatusMessage(`Export to ${selectedFormat} is not available yet.`);
+      setIsError(true);
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+      setStatusMessage(null);
+      setIsError(false);
+      await handler();
+      setStatusMessage(`${selectedFormat} export complete – your download should begin shortly.`);
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to export character."
+      );
+      setIsError(true);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -36,17 +67,27 @@ export default function ExportPanel() {
       </div>
 
       <button
-        disabled={!selectedFormat}
+        disabled={!selectedFormat || isExporting}
         onClick={handleExport}
         className={`flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition
-          ${selectedFormat
+          ${selectedFormat && !isExporting
             ? "bg-blue-600 hover:bg-blue-700 text-white"
             : "bg-gray-200 text-gray-400 cursor-not-allowed"}
         `}
       >
-        <Download className="w-4 h-4" />
+        {isExporting ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Download className="w-4 h-4" />
+        )}
         Export {selectedFormat || ""}
       </button>
+
+      {statusMessage && (
+        <p className={`mt-3 text-xs ${isError ? "text-red-500" : "text-green-600"}`}>
+          {statusMessage}
+        </p>
+      )}
 
       <p className="mt-3 text-xs text-gray-400">
         <span className="font-medium">USDZ</span> is best for AR on iPhones.

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { BVHLoader } from "three/addons/loaders/BVHLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 import { Slider } from "./ui/slider";
 import create_glb from "./create_glb";
@@ -11,6 +12,53 @@ import Chatbot from "./Chatbot";
 import { useCharacterControls } from "@/contexts/CharacterControlsContext";
 import mixamo_targets from "@/lib/mixamo_targets.json";
 import { findPrimaryMixamoRig } from "@/lib/getSkin";
+import { saveAs } from "file-saver";
+
+function getNodePath(node: THREE.Object3D, root: THREE.Object3D): string {
+  const segments: string[] = [];
+  let current: THREE.Object3D | null = node;
+  while (current && current !== root) {
+    if (current.name) {
+      segments.unshift(current.name);
+    } else {
+      segments.unshift(current.uuid);
+    }
+    current = current.parent;
+  }
+  return segments.join("/");
+}
+
+function remapClipBoneBindings(clip: THREE.AnimationClip, root: THREE.Object3D) {
+  const bonePathMap = new Map<string, string>();
+
+  root.traverse((obj) => {
+    if ((obj as any).isBone) {
+      const path = getNodePath(obj, root);
+      if (path) {
+        bonePathMap.set(obj.name, path);
+      }
+    }
+  });
+
+  clip.tracks = clip.tracks.map((track) => {
+    const match = track.name.match(/\.bones\[(.+?)\]\.(.+)/);
+    if (match) {
+      const [, boneName, property] = match;
+      const path = bonePathMap.get(boneName);
+      if (path) {
+        const remapped = track.clone();
+        remapped.name = `${path}.${property}`;
+        return remapped;
+      }
+    }
+    return track;
+  });
+}
+
+type RetargetResult = {
+  mixer: THREE.AnimationMixer;
+  clip: THREE.AnimationClip;
+};
 interface CanvasProps {
   bvhFile: string | null;
   trigger?: boolean;
@@ -23,6 +71,10 @@ interface CanvasProps {
   onFileReceived?: (filename: string) => void;
   onSend?: () => void;
   onAvatarUpdate?: () => void;
+  onExportHandlersReady?: (handlers: {
+    exportSelectedToGLB: () => Promise<void>;
+    exportCurrentBVH: () => Promise<void>;
+  }) => void;
 }
 
 export default function Canvas({ 
@@ -36,7 +88,8 @@ export default function Canvas({
   onMultiCharacterModeChange,
   onFileReceived,
   onSend,
-  onAvatarUpdate
+  onAvatarUpdate,
+  onExportHandlersReady
 }: CanvasProps) {
 
   const sceneRef = useRef<HTMLDivElement | null>(null);
@@ -54,11 +107,18 @@ export default function Canvas({
   const isPlayingRef = useRef(isPlaying);
 
   // Store references to loaded models for transform updates
-  const modelsRef = useRef<any[]>([]);
+  const modelsRef = useRef<THREE.Object3D[]>([]);
+  // Track metadata for each loaded model (character name, source type)
+  const modelMetadataRef = useRef<{ characterName: string; isMixamo: boolean }[]>([]);
   // Store skeleton helpers
-  const skeletonHelpersRef = useRef<any[]>([]);
+  const skeletonHelpersRef = useRef<THREE.Object3D[]>([]);
   // Store reference to THREE.js scene
   const sceneRef_three = useRef<THREE.Scene | null>(null);
+  // Store generated animation clips used for export/playback
+  const animationClipsRef = useRef<THREE.AnimationClip[]>([]);
+  // Cache the most recently retargeted source clip (from BVH)
+  const lastSourceRef = useRef<{ clip: THREE.AnimationClip; skeleton: THREE.Skeleton } | null>(null);
+  const bvhUrlRef = useRef<string | null>(null);
 
   // --- Character transform controls (Use context) ---
   const {
@@ -74,6 +134,127 @@ export default function Canvas({
 
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+
+  const exportSelectedToGLB = useCallback(async () => {
+    const models = modelsRef.current;
+    if (!models || models.length === 0) {
+      throw new Error("No characters available to export.");
+    }
+
+    const source = lastSourceRef.current;
+    if (!source) {
+      throw new Error("No animation available. Generate or load motion before exporting.");
+    }
+
+    const exporter = new GLTFExporter();
+    const exportGroup = new THREE.Group();
+    const exportClips: THREE.AnimationClip[] = [];
+
+    models.forEach((model, index) => {
+      const clone = SkeletonUtils.clone(model);
+      clone.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          const mat = child.material;
+          const isStandard = (mat as any).isMeshStandardMaterial;
+          const isBasic = (mat as any).isMeshBasicMaterial;
+          if (!isStandard && !isBasic) {
+            const color = (mat.color && mat.color.isColor) ? mat.color.clone() : new THREE.Color(0xffffff);
+            const skinning = Boolean(mat.skinning);
+            child.material = new THREE.MeshStandardMaterial({ color, skinning, metalness: 0.1, roughness: 0.9 });
+          }
+        }
+      });
+      exportGroup.add(clone);
+
+      const metadata = modelMetadataRef.current[index] || {
+        characterName: selectedCharacters[index] || `character_${index + 1}`,
+        isMixamo: false,
+      };
+
+      const targetWrapper = { scene: clone };
+      let exportResult: RetargetResult | null;
+
+      if (metadata.isMixamo) {
+        exportResult = retargetMixamoModel(source, targetWrapper, metadata.characterName);
+        normalizeCharacterScale(targetWrapper, 0.0011);
+      } else {
+        exportResult = retargetCustomModel(source, targetWrapper);
+      }
+
+      if (exportResult) {
+        const clip = exportResult.clip.clone();
+        remapClipBoneBindings(clip, clone);
+        if (!clip.name) {
+          clip.name = `Animation_${exportClips.length + 1}`;
+        }
+        exportClips.push(clip);
+        exportResult.mixer.stopAllAction();
+        exportResult.mixer.uncacheRoot(clone);
+      }
+    });
+
+    if (exportClips.length === 0) {
+      throw new Error("Failed to retarget animation for export.");
+    }
+
+    exportGroup.updateMatrixWorld(true);
+
+    const arrayBuffer = await exporter.parseAsync(exportGroup, {
+      binary: true,
+      animations: exportClips,
+      onlyVisible: true,
+      truncateDrawRange: true,
+    });
+
+    if (!(arrayBuffer instanceof ArrayBuffer)) {
+      throw new Error("Exporter returned invalid data.");
+    }
+
+    const fileHint = selectedCharacters[0] || "avatar";
+    const baseName = fileHint.split("/").pop()?.replace(/\.[^/.]+$/, "") || "avatar";
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `${baseName}-${stamp}.glb`;
+
+    const blob = new Blob([arrayBuffer], { type: "model/gltf-binary" });
+    saveAs(blob, filename);
+  }, [selectedCharacters]);
+
+  const exportCurrentBVH = useCallback(async () => {
+    const bvhUrl = bvhUrlRef.current;
+    if (!bvhUrl) {
+      throw new Error("No BVH animation available to export.");
+    }
+
+    const response = await fetch(bvhUrl, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to download BVH (status ${response.status}).`);
+    }
+
+    const blob = await response.blob();
+    let filename = bvhUrl.split('/').pop() || 'animation.bvh';
+    if (!/\.bvh$/i.test(filename)) {
+      const metaName = modelMetadataRef.current[0]?.characterName || 'animation';
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      filename = `${metaName}-${stamp}.bvh`;
+    }
+
+    saveAs(blob, filename);
+  }, []);
+
+  useEffect(() => {
+    if (onExportHandlersReady) {
+      onExportHandlersReady({ exportSelectedToGLB, exportCurrentBVH });
+    }
+  }, [onExportHandlersReady, exportSelectedToGLB, exportCurrentBVH]);
+
+  useEffect(() => {
+    bvhUrlRef.current = bvhFile;
+  }, [bvhFile]);
 
   useEffect(() => {
     console.log('[DEBUG] Canvas useEffect triggered', {
@@ -330,6 +511,8 @@ export default function Canvas({
       // Clear previous mixers
       mixers = [];
       mixersRef.current = [];
+      animationClipsRef.current = [];
+      modelMetadataRef.current = [];
 
       if (selectedCharacters.length === 0) {
         // NO CHARACTERS SELECTED: Show default mesh.glb
@@ -340,6 +523,7 @@ export default function Canvas({
 
           scene.add(targetModel.scene);
           modelsRef.current = [targetModel.scene];
+          modelMetadataRef.current = [{ characterName: "default", isMixamo: false }];
 
 
           targetModel.scene.traverse((child: any) => {
@@ -390,12 +574,13 @@ export default function Canvas({
         
         for (let i = 0; i < selectedCharacters.length; i++) {
           const characterName = selectedCharacters[i];
+          const isMixamo = characterName ? (characterName.toLowerCase().endsWith('.fbx') || characterName.includes('/mixamo/')) : false;
           const position = getCharacterPosition(i, selectedCharacters.length);
 
           try {
             console.log(`Loading character ${i + 1}/${selectedCharacters.length}: ${characterName}`);
             let targetModel: any;
-            if (characterName.toLowerCase().endsWith('.fbx') || characterName.includes('/mixamo/')) {
+            if (isMixamo) {
               // Load FBX model directly (Mixamo)
               const fbx: any = await new Promise((resolve, reject) => {
                 fbxLoader.load(characterName, resolve, undefined, reject);
@@ -412,6 +597,7 @@ export default function Canvas({
 
             scene.add(targetModel.scene);
             modelsRef.current.push(targetModel.scene);
+            modelMetadataRef.current.push({ characterName, isMixamo });
 
             targetModel.scene.traverse((child: any) => {
               if (child.isSkinnedMesh) {
@@ -469,25 +655,38 @@ export default function Canvas({
           });
 
           const source = getSource(sourceModel);
+          lastSourceRef.current = source;
           
+          animationClipsRef.current = [];
+
           // Create mixer for each character
-          mixers = targetModels.map((targetModel, index) => {
+          const retargetResults = targetModels.map((targetModel, index) => {
             console.log(`Applying motion to character ${index + 1}`);
-            // Determine if this is a Mixamo character based on the character name
-            console.log(selectedCharacters)
-            const characterName = selectedCharacters[index] || '';
-            const isMixamo = characterName ? (characterName.toLowerCase().endsWith('.fbx') || characterName.includes('/mixamo/')) : false;
-            const mixer = retargetModel(source, targetModel, isMixamo , characterName);
-            isMixamo ? normalizeCharacterScale(targetModel, 0.0011) : null;
-            return mixer;
-          }).filter((mixer): mixer is THREE.AnimationMixer => mixer !== null);
+            const metadata = modelMetadataRef.current[index] || {
+              characterName: selectedCharacters[index] || '',
+              isMixamo: false,
+            };
+            const { characterName, isMixamo } = metadata;
+            const result = retargetModel(source, targetModel, isMixamo , characterName);
+            if (result && isMixamo) {
+              normalizeCharacterScale(targetModel, 0.0011);
+            }
+            return result;
+          }).filter((result): result is RetargetResult => result !== null);
+
+          mixers = retargetResults.map(result => result.mixer);
+          animationClipsRef.current = retargetResults.map(result => result.clip);
 
           // targetModels.forEach(model => {
           //   model.scene.position.x += 10
           // });
 
           mixersRef.current = mixers;
-          setDuration(source.clip.duration);
+          if (retargetResults.length > 0) {
+            setDuration(retargetResults[0].clip.duration);
+          } else {
+            setDuration(0);
+          }
 
           // Audio setup
           const audioPath = localStorage.getItem("audio");
@@ -948,7 +1147,7 @@ function getTargetSkin(targetModel: any, characterName: string) {
 
 
 // Retargeting function for Mixamo characters (FBX files)
-function retargetMixamoModel(source: any, targetModel: any, characterName: string) {
+function retargetMixamoModel(source: any, targetModel: any, characterName: string): RetargetResult | null {
   const rig = findPrimaryMixamoRig(targetModel.scene|| targetModel);
   console.log('Rig:', rig);
 
@@ -1050,6 +1249,11 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
   
   const retargetedClip = SkeletonUtils.retargetClip(targetSkin, source.skeleton, source.clip, retargetOptions);
   console.log('Mixamo retargetedClip:', retargetedClip);
+
+  if (!retargetedClip || retargetedClip.tracks.length === 0) {
+    console.error('Mixamo retargeting did not produce animation tracks.');
+    return null;
+  }
   
   const FOOT_RX = /Foot$|ToeBase$/i;
   retargetedClip.tracks = retargetedClip.tracks.map(track => {
@@ -1064,11 +1268,11 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
 
   const mixer = new THREE.AnimationMixer(targetSkin);
   mixer.clipAction(retargetedClip).play();
-  return mixer;
+  return { mixer, clip: retargetedClip };
 }
 
 // Retargeting function for custom characters (GLB files)
-function retargetCustomModel(source: any, targetModel: any) {
+function retargetCustomModel(source: any, targetModel: any): RetargetResult | null {
   let targetSkin: any = null;
   
   // Find the SkinnedMesh in the target model
@@ -1109,7 +1313,7 @@ function retargetCustomModel(source: any, targetModel: any) {
     if (fallbackClip.tracks.length > 0) {
       const mixer = new THREE.AnimationMixer(targetSkin);
       mixer.clipAction(fallbackClip).play();
-      return mixer;
+      return { mixer, clip: fallbackClip };
     }
   }
   
@@ -1118,15 +1322,15 @@ function retargetCustomModel(source: any, targetModel: any) {
   // Only play if we have tracks
   if (retargetedClip.tracks.length > 0) {
     mixer.clipAction(retargetedClip).play();
+    return { mixer, clip: retargetedClip };
   } else {
     console.error('No animation tracks found after custom retargeting!');
+    return null;
   }
-  
-  return mixer;
 }
 
 // Main retargeting function that determines which method to use
-function retargetModel(source: any, targetModel: any, isMixamo: boolean = false , characterName: string) {
+function retargetModel(source: any, targetModel: any, isMixamo: boolean = false , characterName: string): RetargetResult | null {
   if (isMixamo) {
     return retargetMixamoModel(source, targetModel, characterName);
   } else {

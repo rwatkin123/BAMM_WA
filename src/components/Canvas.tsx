@@ -11,6 +11,7 @@ import Chatbot from "./Chatbot";
 import { useCharacterControls } from "@/contexts/CharacterControlsContext";
 import mixamo_targets from "@/lib/mixamo_targets.json";
 import { findPrimaryMixamoRig } from "@/lib/getSkin";
+import { computeLocalOffsets } from "@/lib/computeLocalOffsets";
 import { saveAs } from "file-saver";
 import { parseAssetReference } from "@/lib/assetReference";
 
@@ -65,6 +66,8 @@ type ModelMetadata = {
   isMixamo: boolean;
   source: string;
 };
+
+const mixamoOffsetCache = new Map<string, Record<string, THREE.Matrix4>>();
 interface CanvasProps {
   bvhFile: string | null;
   trigger?: boolean;
@@ -1113,11 +1116,17 @@ export default Canvas;
 // Helper functions remain the same
 function getSource(sourceModel: any) {
   console.log('Source model:', sourceModel);
-  const clip = sourceModel.clip;
-  const helper = new THREE.SkeletonHelper(sourceModel.skeleton.bones[0]);
-  const skeleton = new THREE.Skeleton(helper.bones);
-  const mixer = new THREE.AnimationMixer(sourceModel.skeleton.bones[0]);
-  mixer.clipAction(sourceModel.clip).play();
+  const skeleton: THREE.Skeleton | undefined = sourceModel.skeleton;
+  const clip: THREE.AnimationClip = sourceModel.clip;
+  const rootBone = skeleton?.bones?.[0];
+  if (!skeleton || !rootBone) {
+    throw new Error("BVH source skeleton is missing bones.");
+  }
+  if (rootBone) {
+    skeleton.pose();
+  }
+  const mixer = new THREE.AnimationMixer(rootBone);
+  mixer.clipAction(clip).play();
   return { clip, skeleton, mixer };
 }
 
@@ -1218,7 +1227,7 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
     rotationOrder: "ZYX", 
     preserveHipPosition: true, 
     useTargetMatrix: true,
-    scale: 0.6,
+    scale: 100,
     // localOffsets: {
     //   'mixamorigLeftUpLeg': rotateCW180,
     //   'mixamorigRightUpLeg': rotateCW180,
@@ -1236,6 +1245,28 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
     //   'mixamorigRightHand': rotateRightHand,
     // },
   };
+
+  const sourceSkeleton: THREE.Skeleton | undefined = source?.skeleton;
+
+  if (sourceSkeleton && targetSkin?.isSkinnedMesh) {
+    const cacheKey = `${characterName || targetSkin.uuid}:${sourceSkeleton.uuid}`;
+    let localOffsets = mixamoOffsetCache.get(cacheKey);
+
+    if (!localOffsets || Object.keys(localOffsets).length === 0) {
+      localOffsets = computeLocalOffsets(targetSkin, sourceSkeleton, {
+        getBoneName: retargetOptions.getBoneName,
+        names: retargetOptions.names,
+      });
+
+      if (localOffsets && Object.keys(localOffsets).length > 0) {
+        mixamoOffsetCache.set(cacheKey, localOffsets);
+      }
+    }
+
+    if (localOffsets && Object.keys(localOffsets).length > 0) {
+      retargetOptions.localOffsets = localOffsets;
+    }
+  }
   
   // Scale the target model for Mixamo
   // targetModel.scene.scale.setScalar(0.011);

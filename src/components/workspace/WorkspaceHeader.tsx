@@ -1,29 +1,42 @@
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Save } from "lucide-react";
 
 interface WorkspaceHeaderProps {
-  onExportGLB?: () => void;
-  onExportBVH?: () => void;
   characterCount: number;
+  projectName?: string | null;
+  onBackToProjects?: () => void;
+  onSave?: () => void;
+  isSaving?: boolean;
 }
 
-export default function WorkspaceHeader({ onExportGLB, onExportBVH, characterCount }: WorkspaceHeaderProps) {
+export default function WorkspaceHeader({
+  characterCount,
+  projectName,
+  onBackToProjects,
+  onSave,
+  isSaving,
+}: WorkspaceHeaderProps) {
   return (
     <header className="flex items-center justify-between border-b border-slate-200 bg-white/70 px-6 py-3 backdrop-blur">
-      <div>
-        <h1 className="text-sm font-semibold text-slate-800">BAMM Workspace</h1>
-        <p className="text-xs text-slate-400">{characterCount} character{characterCount === 1 ? '' : 's'} in scene</p>
+      <div className="flex items-center gap-3">
+        {onBackToProjects && (
+          <Button variant="ghost" size="sm" onClick={onBackToProjects}>
+            Projects
+          </Button>
+        )}
+        <div>
+          <h1 className="text-sm font-semibold text-slate-800">
+            {projectName || "BAMM Workspace"}
+          </h1>
+          <p className="text-xs text-slate-400">
+            {characterCount} character{characterCount === 1 ? "" : "s"} in scene
+          </p>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={onExportBVH} disabled={!onExportBVH}>
-          <Download className="mr-2 h-3.5 w-3.5" />
-          Export BVH
-        </Button>
-        <Button size="sm" onClick={onExportGLB} disabled={!onExportGLB}>
-          <Download className="mr-2 h-3.5 w-3.5" />
-          Export GLB
-        </Button>
-      </div>
+      <Button size="sm" onClick={onSave} disabled={!onSave || isSaving}>
+        <Save className="mr-2 h-3.5 w-3.5" />
+        {isSaving ? "Saving…" : "Save"}
+      </Button>
     </header>
   );
 }

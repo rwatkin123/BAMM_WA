@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useRef, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Canvas from "@/components/Canvas"
 import axios from "axios"
 import createAndSaveGLB from "@/lib/createMesh"
@@ -10,8 +11,12 @@ import TimelinePanel from "@/components/workspace/TimelinePanel"
 import WorkspaceHeader from "@/components/workspace/WorkspaceHeader"
 import { Loader2 } from "lucide-react"
 import type { Measurements } from "@/components/MeasurementControls"
+import type { ProjectRow } from "@/lib/types/projects"
 
 export default function Home() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const projectId = searchParams.get("projectId")
   const [bvhFile, setBvhFile] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [trigger, setTrigger] = useState(false)
@@ -27,6 +32,8 @@ export default function Home() {
   const [playbackHandlers, setPlaybackHandlers] = useState<{ play: () => void; pause: () => void; seek: (time: number) => void; toggle: () => void } | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const importedObjectUrlsRef = useRef<string[]>([])
+  const [projectName, setProjectName] = useState<string | null>(null)
+  const [isSavingProject, setIsSavingProject] = useState(false)
 
   const [measurements, setMeasurements] = useState<Measurements>({
     height: 175,
@@ -133,6 +140,95 @@ export default function Home() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const fetchProject = async () => {
+      if (!projectId) {
+        setProjectName(null)
+        return
+      }
+
+      try {
+        const response = await fetch(`/api/projects/${projectId}`, {
+          cache: "no-store",
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to load project')
+        }
+
+        const payload = await response.json()
+        if (cancelled) return
+
+        const project = payload?.project as ProjectRow | undefined
+
+        setProjectName(project?.name ?? null)
+
+        if (project?.selected_model) {
+          setSelectedAvatars((prev) => {
+            if (prev.length === 1 && prev[0] === project.selected_model) {
+              return prev
+            }
+            return [project.selected_model as string]
+          })
+          setMultiCharacterMode(false)
+        } else {
+          setSelectedAvatars((prev) => (prev.length === 0 ? prev : []))
+        }
+
+        if (project?.bvh_path) {
+          const bvhResponse = await fetch(`/api/projects/${projectId}/bvh`, {
+            cache: 'no-store'
+          })
+
+          if (cancelled) {
+            return
+          }
+
+          if (bvhResponse.ok) {
+            const bvhPayload = await bvhResponse.json()
+            const url = bvhPayload?.url as string | undefined
+
+            if (url) {
+              setBvhFile((prev) => {
+                if (prev === url) {
+                  return prev
+                }
+                setTrigger((toggle) => !toggle)
+                return url
+              })
+            }
+          } else {
+            setBvhFile((prev) => {
+              if (prev === null) {
+                return prev
+              }
+              setTrigger((toggle) => !toggle)
+              return null
+            })
+          }
+        } else {
+          setBvhFile((prev) => {
+            if (prev === null) {
+              return prev
+            }
+            setTrigger((toggle) => !toggle)
+            return null
+          })
+        }
+      } catch (error) {
+        console.error('Failed to fetch project', error)
+      }
+    }
+
+    fetchProject()
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
+
   // 🆕 NEW: Toggle between single and multi-character mode
   const toggleCharacterMode = () => {
     setMultiCharacterMode(!multiCharacterMode)
@@ -144,14 +240,100 @@ export default function Home() {
   // Debug log for Canvas props
   console.log('[DEBUG] Canvas props:', {bvhFile, trigger, selectedCharacters: multiCharacterMode ? selectedAvatars : [], isPlaying: false, multiCharacterMode});
 
+  const handleBackToProjects = () => {
+    router.push("/projects")
+  }
+
+  const handleSaveProject = async () => {
+    if (!projectId || isSavingProject) {
+      return
+    }
+
+    setIsSavingProject(true)
+
+    try {
+      const formData = new FormData()
+      let hasPayload = false
+
+      const primaryAvatar = selectedAvatars[0] ?? null
+      if (primaryAvatar) {
+        const normalized = primaryAvatar.includes('#')
+          ? primaryAvatar.split('#').pop() ?? primaryAvatar
+          : primaryAvatar
+        formData.append('selectedModel', normalized)
+        hasPayload = true
+      }
+
+      if (bvhFile) {
+        const response = await fetch(bvhFile, {
+          headers: {
+            'ngrok-skip-browser-warning': 'true',
+          },
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to download BVH (status ${response.status})`)
+        }
+
+        const blob = await response.blob()
+        const inferredName = bvhFile.split('?')[0]?.split('/').pop() || 'animation.bvh'
+        const safeName = /\.bvh$/i.test(inferredName)
+          ? inferredName
+          : `${inferredName.replace(/\.[^/.]+$/, '') || 'animation'}.bvh`
+
+        const file = new File([blob], safeName, {
+          type: blob.type || 'application/octet-stream',
+        })
+
+        formData.append('file', file)
+        hasPayload = true
+      }
+
+      if (!hasPayload) {
+        const response = await fetch(`/api/projects?id=${projectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'touch' }),
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to update project timestamp')
+        }
+
+        return
+      }
+
+      const saveResponse = await fetch(`/api/projects/${projectId}/save`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      const payload = await saveResponse.json().catch(() => ({}))
+
+      if (!saveResponse.ok) {
+        throw new Error(payload?.message ?? 'Failed to save project')
+      }
+
+      if (payload?.project?.name && payload.project.name !== projectName) {
+        setProjectName(payload.project.name)
+      }
+    } catch (error) {
+      console.error('Failed to save project', error)
+    } finally {
+      setIsSavingProject(false)
+    }
+  }
+
   return (
     <CharacterControlsProvider>
       <div className="flex h-screen overflow-hidden bg-slate-200">
         <div className="flex flex-1 min-h-0 flex-col bg-slate-100">
           <WorkspaceHeader
             characterCount={selectedAvatars.length}
-            onExportGLB={exportHandlers?.exportSelectedToGLB}
-            onExportBVH={exportHandlers?.exportCurrentBVH}
+            projectName={projectName}
+            onBackToProjects={handleBackToProjects}
+            onSave={projectId ? handleSaveProject : undefined}
+            isSaving={isSavingProject}
           />
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <InspectorPanel
@@ -163,9 +345,6 @@ export default function Home() {
               onImportFile={handleImportModel}
               measurements={measurements}
               onMeasurementsChange={handleMeasurementsChange}
-              onFileReceived={handleFileReceived}
-              onSend={handleSend}
-              onAvatarUpdate={handleAvatarUpdate}
               exportHandlers={exportHandlers}
             />
             <div className="flex flex-1 min-h-0 flex-col overflow-hidden">

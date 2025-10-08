@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import "./styles.css"; // ✅ relative to page.tsx
@@ -34,7 +33,7 @@ export default function Page() {
                 Experience the future of 3D modeling with our cutting-edge technology. Transform your
                 ideas into stunning 3D models with unprecedented ease and quality.
               </p>
-              <Link href="/dashboard">
+              <Link href="/projects">
                 <button className="cta-button">Get Started</button>
               </Link>
             </div>

@@ -701,9 +701,6 @@ const CanvasComponent = ({
             console.log(`Applying motion to character ${index + 1}: ${displayName}`);
             const retargetName = isMixamo ? characterKey : displayName;
             const result = retargetModel(source, targetModel, isMixamo , retargetName);
-            if (result && isMixamo) {
-              normalizeCharacterScale(targetModel, 0.0011);
-            }
             return result;
           }).filter((result): result is RetargetResult => result !== null);
 
@@ -1067,6 +1064,50 @@ const CanvasComponent = ({
 
 const Canvas = React.memo(CanvasComponent);
 
+// m_avg_* (target) -> source bone name (your BVH/FBX rig)
+const targetToSourceName = {
+  // root / pelvis
+  m_avg_root:   "Hips",     // if your pipeline wants a root driver
+  m_avg_Pelvis: "Hips",
+
+  // spine (note your source has Spine, Spine1, Spine2)
+  m_avg_Spine1: "Spine",
+  m_avg_Spine2: "Spine1",
+  m_avg_Spine3: "Spine2",
+  m_avg_Neck:   "Neck",
+  m_avg_Head:   "Head",
+
+  // left leg
+  m_avg_L_Hip:   "LeftUpLeg",
+  m_avg_L_Knee:  "LeftLeg",
+  m_avg_L_Ankle: "LeftFoot",
+  m_avg_L_Foot:  "LeftToe",     // closest match; target has no explicit toe base
+
+  // right leg
+  m_avg_R_Hip:   "RightUpLeg",
+  m_avg_R_Knee:  "RightLeg",
+  m_avg_R_Ankle: "RightFoot",
+  m_avg_R_Foot:  "RightToe",
+
+  // left arm (your target has a Collar bone, source does not)
+  m_avg_L_Collar:   "LeftShoulder",
+  m_avg_L_Shoulder: "LeftArm",
+  m_avg_L_Elbow:    "LeftForeArm",
+  m_avg_L_Wrist:    "LeftHand",
+  m_avg_L_Hand:     "LeftHand", // extra hand node → reuse wrist driver
+
+  // right arm
+  m_avg_R_Collar:   "RightShoulder",
+  m_avg_R_Shoulder: "RightArm",
+  m_avg_R_Elbow:    "RightForeArm",
+  m_avg_R_Wrist:    "RightHand",
+  m_avg_R_Hand:     "RightHand"
+};
+
+// in retargetOptions
+
+
+
 export default Canvas;
 
 // Helper functions remain the same
@@ -1081,8 +1122,7 @@ function getSource(sourceModel: any) {
 }
 
 function getTargetSkin(targetModel: any, characterName: string) {
-  console.log('characterName:', characterName);
-  console.log('mixamo_targets:', mixamo_targets);
+
   const targetSkin = mixamo_targets.find(target => target.charactername == characterName);
   console.log('Target skin:', targetSkin?.targetskin);
   let candidate = targetSkin ? targetModel.scene.children[targetSkin.targetskin] : undefined;
@@ -1105,14 +1145,14 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
 
   
   let targetSkin: any = getTargetSkin(targetModel, characterName);
+  
 
-
-  // Find the SkinnedMesh in the target model
-  targetModel.scene.traverse((child: any) => {
-    if (!targetSkin && child.isSkinnedMesh) {
-      targetSkin = child;
-    }
-  });
+  // // Find the SkinnedMesh in the target model
+  // targetModel.scene.traverse((child: any) => {
+  //   if (!targetSkin && child.isSkinnedMesh) {
+  //     targetSkin = child;
+  //   }
+  // });
   
   if (!targetSkin) {
     console.warn('No SkinnedMesh found for Mixamo target model');
@@ -1174,26 +1214,27 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
     getBoneName: function (bone: any) {
       return bone.name.replace(/^mixamorig/, '');
     },
+    // getBoneName: (bone: any) => targetToSourceName[bone.name as keyof typeof targetToSourceName] || bone.name,
     rotationOrder: "ZYX", 
     preserveHipPosition: true, 
     useTargetMatrix: true,
-    scale: 142,
-    localOffsets: {
-      'mixamorigLeftUpLeg': rotateCW180,
-      'mixamorigRightUpLeg': rotateCW180,
-      'mixamorigLeftLeg': rotateCW180,
-      'mixamorigRightLeg': rotateCW180,
-      'mixamorigLeftFoot': rotateFoot,
-      'mixamorigRightFoot': rotateFoot,
-      'mixamorigRightShoulder': rotateRightShoulder,
-      'mixamorigLeftShoulder': rotateLeftShoulder,
-      'mixamorigRightArm': rotateRightArm,
-      'mixamorigLeftArm': rotateLeftArm,
-      'mixamorigRightForeArm': rotateRightForeArm,
-      'mixamorigLeftForeArm': rotateLeftForeArm,
-      'mixamorigLeftHand': rotateLeftHand,
-      'mixamorigRightHand': rotateRightHand,
-    },
+    scale: 0.6,
+    // localOffsets: {
+    //   'mixamorigLeftUpLeg': rotateCW180,
+    //   'mixamorigRightUpLeg': rotateCW180,
+    //   'mixamorigLeftLeg': rotateCW180,
+    //   'mixamorigRightLeg': rotateCW180,
+    //   'mixamorigLeftFoot': rotateFoot,
+    //   'mixamorigRightFoot': rotateFoot,
+    //   'mixamorigRightShoulder': rotateRightShoulder,
+    //   'mixamorigLeftShoulder': rotateLeftShoulder,
+    //   'mixamorigRightArm': rotateRightArm,
+    //   'mixamorigLeftArm': rotateLeftArm,
+    //   'mixamorigRightForeArm': rotateRightForeArm,
+    //   'mixamorigLeftForeArm': rotateLeftForeArm,
+    //   'mixamorigLeftHand': rotateLeftHand,
+    //   'mixamorigRightHand': rotateRightHand,
+    // },
   };
   
   // Scale the target model for Mixamo
@@ -1217,7 +1258,7 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
     }
     return track;
   });
-
+targetModel.scene.position.y += mixamo_targets.find(target => target.charactername == characterName)?.yoffset || 0;
   const mixer = new THREE.AnimationMixer(targetSkin);
   mixer.clipAction(retargetedClip).play();
   return { mixer, clip: retargetedClip };

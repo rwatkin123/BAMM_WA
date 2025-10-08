@@ -3,7 +3,6 @@ import AvatarGrid from "@/components/AvatarGrid";
 import ImportPanel from "@/components/ImportPanel";
 import MeasurementControls, { type Measurements } from "@/components/MeasurementControls";
 import ExportPanel from "@/components/ExportPanel";
-import Chatbot from "@/components/Chatbot";
 
 interface InspectorPanelProps {
   multiCharacterMode: boolean;
@@ -14,9 +13,6 @@ interface InspectorPanelProps {
   onImportFile?: (file: File, objectUrl: string) => void;
   measurements: Measurements;
   onMeasurementsChange: (measurements: Measurements) => void;
-  onFileReceived?: (filename: string) => void;
-  onSend?: () => void;
-  onAvatarUpdate?: () => void;
   exportHandlers?: { exportSelectedToGLB?: () => Promise<void>; exportCurrentBVH?: () => Promise<void> } | null;
 }
 
@@ -29,9 +25,6 @@ export default function InspectorPanel({
   onImportFile,
   measurements,
   onMeasurementsChange,
-  onFileReceived,
-  onSend,
-  onAvatarUpdate,
   exportHandlers,
 }: InspectorPanelProps) {
   return (
@@ -72,16 +65,6 @@ export default function InspectorPanel({
             initialMeasurements={measurements}
             onChange={onMeasurementsChange}
           />
-          {onFileReceived && onSend && onAvatarUpdate && (
-            <div className="rounded-xl border border-slate-200 p-3">
-              <h3 className="text-xs font-semibold text-slate-600 mb-2">Motion AI</h3>
-              <Chatbot
-                onFileReceived={onFileReceived}
-                onSend={onSend}
-                onAvatarUpdate={onAvatarUpdate}
-              />
-            </div>
-          )}
         </TabsContent>
         <TabsContent value="export" className="p-4">
           <ExportPanel

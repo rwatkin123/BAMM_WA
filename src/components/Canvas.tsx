@@ -311,9 +311,15 @@ const CanvasComponent = ({
     const newBox = new THREE.Box3().setFromObject(model.scene);
     
     // Position on ground
-    model.scene.position.y = -newBox.min.y;
+    const groundOffset = -newBox.min.y;
+    model.scene.position.y = groundOffset;
+    model.scene.userData = model.scene.userData || {};
+    model.scene.userData.normalizedScale = scaleFactor;
+    model.scene.userData.groundOffset = groundOffset;
+    model.scene.userData.originalHeight = currentHeight;
+    model.scene.userData.targetHeight = targetHeight;
     
-    return { scaleFactor, newBox };
+    return { scaleFactor, newBox, groundOffset };
   };
 
   // Helper function to calculate character positions
@@ -547,6 +553,8 @@ const CanvasComponent = ({
           });
 
           scene.add(targetModel.scene);
+          targetModel.scene.userData = targetModel.scene.userData || {};
+          targetModel.scene.userData.modelName = "default";
           modelsRef.current = [targetModel.scene];
           modelMetadataRef.current = [{ displayName: "default", isMixamo: false, source: '/mesh/mesh.glb' }];
 
@@ -561,7 +569,10 @@ const CanvasComponent = ({
           });
 
           // 🔧 NEW: Normalize default character scale
-          normalizeCharacterScale(targetModel);
+          const { scaleFactor, groundOffset } = normalizeCharacterScale(targetModel);
+          targetModel.scene.userData.characterScaleMultiplier = characterScale;
+          targetModel.scene.scale.setScalar(scaleFactor * characterScale);
+          targetModel.scene.position.y = groundOffset;
 
           // Center the single character
           const box = new THREE.Box3().setFromObject(targetModel.scene);
@@ -627,6 +638,8 @@ const CanvasComponent = ({
             }
 
             scene.add(targetModel.scene);
+            targetModel.scene.userData = targetModel.scene.userData || {};
+            targetModel.scene.userData.modelName = label;
             modelsRef.current.push(targetModel.scene);
             modelMetadataRef.current.push({
               displayName: label,
@@ -643,7 +656,10 @@ const CanvasComponent = ({
               }
             });
 
-            const { scaleFactor } = normalizeCharacterScale(targetModel, 2.0);
+            const { scaleFactor, groundOffset } = normalizeCharacterScale(targetModel, 2.0);
+            targetModel.scene.userData.characterScaleMultiplier = characterScale;
+            targetModel.scene.scale.setScalar(scaleFactor * characterScale);
+            targetModel.scene.position.y = groundOffset;
             console.log(`Character ${i + 1} (${label}) scaled by: ${scaleFactor.toFixed(3)}`);
 
             targetModel.scene.position.x += position[0];
@@ -808,7 +824,10 @@ const CanvasComponent = ({
   useEffect(() => {
     modelsRef.current.forEach(model => {
       if (model) {
-        model.scale.setScalar(characterScale);
+        const baseScale = (model as any)?.userData?.normalizedScale ?? 1;
+        (model as any).userData = (model as any).userData || {};
+        (model as any).userData.characterScaleMultiplier = characterScale;
+        model.scale.setScalar(baseScale * characterScale);
         model.rotation.y = (characterRotation * Math.PI) / 180;
         // Update skinning options for all SkinnedMesh children
         model.traverse((child: any) => {
@@ -1149,10 +1168,11 @@ function getTargetSkin(targetModel: any, characterName: string) {
 
 // Retargeting function for Mixamo characters (FBX files)
 function retargetMixamoModel(source: any, targetModel: any, characterName: string): RetargetResult | null {
-  const rig = findPrimaryMixamoRig(targetModel.scene|| targetModel);
+  const targetScene = targetModel.scene || targetModel;
+  const rig = findPrimaryMixamoRig(targetScene);
   console.log('Rig:', rig);
 
-  
+
   let targetSkin: any = getTargetSkin(targetModel, characterName);
   
 
@@ -1167,67 +1187,23 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
     console.warn('No SkinnedMesh found for Mixamo target model');
     return null;
   }
-  
+
   console.log('Retargeting Mixamo model:', targetModel);
   
-  // Mixamo-specific rotation matrices for proper bone alignment
-  const rotateCW180 = new THREE.Matrix4().makeRotationZ(THREE.MathUtils.degToRad(180));
-  const rotateFoot = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(-65), 
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(180)
-  ));
-  const rotateRightArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(112), 
-    THREE.MathUtils.degToRad(-10), 
-    THREE.MathUtils.degToRad(90)
-  ));
-  const rotateRightForeArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(99), 
-    THREE.MathUtils.degToRad(-3), 
-    THREE.MathUtils.degToRad(73)
-  ));
-  const rotateLeftArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(104), 
-    THREE.MathUtils.degToRad(20), 
-    THREE.MathUtils.degToRad(-73)
-  ));
-  const rotateLeftForeArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(68), 
-    THREE.MathUtils.degToRad(-7), 
-    THREE.MathUtils.degToRad(-82)
-  ));
-  const rotateLeftShoulder = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(90), 
-    THREE.MathUtils.degToRad(-11), 
-    THREE.MathUtils.degToRad(-82)
-  ));
-  const rotateRightShoulder = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(100), 
-    THREE.MathUtils.degToRad(-3), 
-    THREE.MathUtils.degToRad(73)
-  ));
-  const rotateLeftHand = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(-90)
-  ));
-  const rotateRightHand = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(90)
-  ));
-
+ 
   const retargetOptions = {
     hip: 'Hips',
     getBoneName: function (bone: any) {
+      if (targetModel.scene.userData.modelName == "basic.fbx") {
+        return targetToSourceName[bone.name as keyof typeof targetToSourceName] || bone.name;
+      }
       return bone.name.replace(/^mixamorig/, '');
     },
     // getBoneName: (bone: any) => targetToSourceName[bone.name as keyof typeof targetToSourceName] || bone.name,
-    rotationOrder: "ZYX", 
-    preserveHipPosition: true, 
+    rotationOrder: "ZYX",
+    preserveHipPosition: true,
     useTargetMatrix: true,
-    scale: 100,
+    scale: targetModel.scene.userData.modelName == "basic.fbx" ? 1 : 100,
     // localOffsets: {
     //   'mixamorigLeftUpLeg': rotateCW180,
     //   'mixamorigRightUpLeg': rotateCW180,
@@ -1268,9 +1244,8 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
     }
   }
   
-  // Scale the target model for Mixamo
-  // targetModel.scene.scale.setScalar(0.011);
   
+
   const retargetedClip = SkeletonUtils.retargetClip(targetSkin, source.skeleton, source.clip, retargetOptions);
   console.log('Mixamo retargetedClip:', retargetedClip);
 
@@ -1289,9 +1264,22 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
     }
     return track;
   });
-targetModel.scene.position.y += mixamo_targets.find(target => target.charactername == characterName)?.yoffset || 0;
+  const mixamoTarget = mixamo_targets.find(target => target.charactername == characterName);
+  const baseScale = typeof targetScene.userData?.normalizedScale === "number" ? targetScene.userData.normalizedScale : 1;
+  const scaleMultiplier = typeof targetScene.userData?.originalHeight === "number" ? targetScene.userData.originalHeight : 1;
+
+  targetModel.scene.scale.setScalar(targetModel.scene.userData.modelName == "basic.fbx" ? 1 : baseScale/30);
+  targetScene.updateMatrixWorld(true);
+
+  const mixamoOffset = mixamoTarget?.yoffset || 0;
+  const bbox = new THREE.Box3().setFromObject(targetScene);
+  const groundOffset = -bbox.min.y;
+  targetScene.userData.groundOffset = groundOffset;
+  targetScene.position.y = groundOffset + mixamoOffset;
+
   const mixer = new THREE.AnimationMixer(targetSkin);
   mixer.clipAction(retargetedClip).play();
+
   return { mixer, clip: retargetedClip };
 }
 

@@ -1,8 +1,8 @@
 [
-    { "charactername": "/mixamo/ybot.fbx", "targetskin": 2 , "yoffset": -1.5},
-    { "charactername": "/mixamo/maria.fbx", "targetskin": 1 , "yoffset": -1.5},
-    { "charactername": "/mixamo/mesh.fbx", "targetskin": 1 , "yoffset": -1.5},
+    { "charactername": "/mixamo/ybot.fbx", "targetskin": 2 , "yoffset": 1.5},
+    { "charactername": "/mixamo/maria.fbx", "targetskin": 1 , "yoffset": 1.5},
+    { "charactername": "/mixamo/mesh.fbx", "targetskin": 1 , "yoffset": 1.5},
     { "charactername": "/mixamo/Remy.fbx", "targetskin": 3 , "yoffset": 0},
-    { "charactername": "/mixamo/sporty_granny.fbx", "targetskin": 0 , "yoffset": -1},
+    { "charactername": "/mixamo/sporty_granny.fbx", "targetskin": 0 , "yoffset": 1},
     {"charactername": "/mixamo/basic.fbx", "targetskin": 0 , "yoffset": 0.6}
   ]

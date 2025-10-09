@@ -11,6 +11,8 @@ interface AvatarGridProps {
   multiCharacterMode?: boolean; // NEW: Toggle between single/multi selection
   maxCharacters?: number; // NEW: Character limit
   className?: string;
+  fullHeight?: boolean;
+  scrollable?: boolean;
 }
 
 export default function AvatarGrid({ 
@@ -19,7 +21,9 @@ export default function AvatarGrid({
   selectedAvatars = [], 
   multiCharacterMode = false,
   maxCharacters = 4,
-  className = "w-[32rem]" 
+  className = "w-[32rem]",
+  fullHeight = true,
+  scrollable = true,
 }: AvatarGridProps) {
   const [files, setFiles] = useState<string[]>([]);
   const [source, setSource] = useState<'custom' | 'mixamo'>("custom");
@@ -113,8 +117,11 @@ export default function AvatarGrid({
     }
   };
 
+  const heightClasses = fullHeight ? 'h-full' : '';
+  const overflowClasses = scrollable ? 'overflow-y-auto' : '';
+
   return (
-    <div className={`${className} bg-transparent h-full overflow-y-auto p-6 space-y-4`}>
+    <div className={`${className} bg-transparent ${heightClasses} ${overflowClasses} p-4 space-y-4`}>
       {/* Source toggle */}
       <div className="flex items-center justify-between">
         <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">

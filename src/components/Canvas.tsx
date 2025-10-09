@@ -1,16 +1,73 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { BVHLoader } from "three/addons/loaders/BVHLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
-import { Slider } from "./ui/slider";
 import create_glb from "./create_glb";
 import Chatbot from "./Chatbot";
 import { useCharacterControls } from "@/contexts/CharacterControlsContext";
 import mixamo_targets from "@/lib/mixamo_targets.json";
 import { findPrimaryMixamoRig } from "@/lib/getSkin";
+import { computeLocalOffsets } from "@/lib/computeLocalOffsets";
+import { saveAs } from "file-saver";
+import { parseAssetReference } from "@/lib/assetReference";
+
+function getNodePath(node: THREE.Object3D, root: THREE.Object3D): string {
+  const segments: string[] = [];
+  let current: THREE.Object3D | null = node;
+  while (current && current !== root) {
+    if (current.name) {
+      segments.unshift(current.name);
+    } else {
+      segments.unshift(current.uuid);
+    }
+    current = current.parent;
+  }
+  return segments.join("/");
+}
+
+function remapClipBoneBindings(clip: THREE.AnimationClip, root: THREE.Object3D) {
+  const bonePathMap = new Map<string, string>();
+
+  root.traverse((obj) => {
+    if ((obj as any).isBone) {
+      const path = getNodePath(obj, root);
+      if (path) {
+        bonePathMap.set(obj.name, path);
+      }
+    }
+  });
+
+  clip.tracks = clip.tracks.map((track) => {
+    const match = track.name.match(/\.bones\[(.+?)\]\.(.+)/);
+    if (match) {
+      const [, boneName, property] = match;
+      const path = bonePathMap.get(boneName);
+      if (path) {
+        const remapped = track.clone();
+        remapped.name = `${path}.${property}`;
+        return remapped;
+      }
+    }
+    return track;
+  });
+}
+
+type RetargetResult = {
+  mixer: THREE.AnimationMixer;
+  clip: THREE.AnimationClip;
+};
+
+type ModelMetadata = {
+  displayName: string;
+  isMixamo: boolean;
+  source: string;
+};
+
+const mixamoOffsetCache = new Map<string, Record<string, THREE.Matrix4>>();
 interface CanvasProps {
   bvhFile: string | null;
   trigger?: boolean;
@@ -18,26 +75,38 @@ interface CanvasProps {
   onProgressChange?: (progress: number) => void;
   onDurationChange?: (duration: number) => void;
   onTrimRangeChange?: (trimRange: number[]) => void;
+  onPlayStateChange?: (playing: boolean) => void;
   multiCharacterMode?: boolean;
   onMultiCharacterModeChange?: (mode: boolean) => void;
   onFileReceived?: (filename: string) => void;
   onSend?: () => void;
   onAvatarUpdate?: () => void;
+  onExportHandlersReady?: (handlers: {
+    exportSelectedToGLB: () => Promise<void>;
+    exportCurrentBVH: () => Promise<void>;
+  }) => void;
+  onPlaybackHandlersReady?: (handlers: {
+    play: () => void;
+    pause: () => void;
+    seek: (time: number) => void;
+    toggle: () => void;
+  }) => void;
 }
 
-export default function Canvas({ 
+const CanvasComponent = ({ 
   bvhFile, 
   trigger, 
   selectedCharacters = [],
   onProgressChange,
   onDurationChange,
   onTrimRangeChange,
-  multiCharacterMode,
-  onMultiCharacterModeChange,
   onFileReceived,
   onSend,
-  onAvatarUpdate
-}: CanvasProps) {
+  onAvatarUpdate,
+  onExportHandlersReady,
+  onPlaybackHandlersReady,
+  onPlayStateChange,
+}: CanvasProps) => {
 
   const sceneRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -54,11 +123,18 @@ export default function Canvas({
   const isPlayingRef = useRef(isPlaying);
 
   // Store references to loaded models for transform updates
-  const modelsRef = useRef<any[]>([]);
+  const modelsRef = useRef<THREE.Object3D[]>([]);
+  // Track metadata for each loaded model (character name, source type)
+  const modelMetadataRef = useRef<ModelMetadata[]>([]);
   // Store skeleton helpers
-  const skeletonHelpersRef = useRef<any[]>([]);
+  const skeletonHelpersRef = useRef<THREE.Object3D[]>([]);
   // Store reference to THREE.js scene
   const sceneRef_three = useRef<THREE.Scene | null>(null);
+  // Store generated animation clips used for export/playback
+  const animationClipsRef = useRef<THREE.AnimationClip[]>([]);
+  // Cache the most recently retargeted source clip (from BVH)
+  const lastSourceRef = useRef<{ clip: THREE.AnimationClip; skeleton: THREE.Skeleton } | null>(null);
+  const bvhUrlRef = useRef<string | null>(null);
 
   // --- Character transform controls (Use context) ---
   const {
@@ -74,6 +150,128 @@ export default function Canvas({
 
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+
+  const exportSelectedToGLB = useCallback(async () => {
+    const models = modelsRef.current;
+    if (!models || models.length === 0) {
+      throw new Error("No characters available to export.");
+    }
+
+    const source = lastSourceRef.current;
+    if (!source) {
+      throw new Error("No animation available. Generate or load motion before exporting.");
+    }
+
+    const exporter = new GLTFExporter();
+    const exportGroup = new THREE.Group();
+    const exportClips: THREE.AnimationClip[] = [];
+
+    models.forEach((model, index) => {
+      const clone = SkeletonUtils.clone(model);
+      clone.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          const mat = child.material;
+          const isStandard = (mat as any).isMeshStandardMaterial;
+          const isBasic = (mat as any).isMeshBasicMaterial;
+          if (!isStandard && !isBasic) {
+            const color = (mat.color && mat.color.isColor) ? mat.color.clone() : new THREE.Color(0xffffff);
+            const skinning = Boolean(mat.skinning);
+            child.material = new THREE.MeshStandardMaterial({ color, skinning, metalness: 0.1, roughness: 0.9 });
+          }
+        }
+      });
+      exportGroup.add(clone);
+
+      const metadata = modelMetadataRef.current[index] || {
+        displayName: selectedCharacters[index] || `character_${index + 1}`,
+        isMixamo: false,
+        source: selectedCharacters[index] || `character_${index + 1}`,
+      };
+
+      const targetWrapper = { scene: clone };
+      let exportResult: RetargetResult | null;
+
+      if (metadata.isMixamo) {
+        exportResult = retargetMixamoModel(source, targetWrapper, metadata.source);
+        normalizeCharacterScale(targetWrapper, 0.0011);
+      } else {
+        exportResult = retargetCustomModel(source, targetWrapper);
+      }
+
+      if (exportResult) {
+        const clip = exportResult.clip.clone();
+        remapClipBoneBindings(clip, clone);
+        if (!clip.name) {
+          clip.name = `Animation_${exportClips.length + 1}`;
+        }
+        exportClips.push(clip);
+        exportResult.mixer.stopAllAction();
+        exportResult.mixer.uncacheRoot(clone);
+      }
+    });
+
+    if (exportClips.length === 0) {
+      throw new Error("Failed to retarget animation for export.");
+    }
+
+    exportGroup.updateMatrixWorld(true);
+
+    const arrayBuffer = await exporter.parseAsync(exportGroup, {
+      binary: true,
+      animations: exportClips,
+      onlyVisible: true,
+      truncateDrawRange: true,
+    });
+
+    if (!(arrayBuffer instanceof ArrayBuffer)) {
+      throw new Error("Exporter returned invalid data.");
+    }
+
+    const fileHint = selectedCharacters[0] || "avatar";
+    const baseName = fileHint.split("/").pop()?.replace(/\.[^/.]+$/, "") || "avatar";
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `${baseName}-${stamp}.glb`;
+
+    const blob = new Blob([arrayBuffer], { type: "model/gltf-binary" });
+    saveAs(blob, filename);
+  }, [selectedCharacters]);
+
+  const exportCurrentBVH = useCallback(async () => {
+    const bvhUrl = bvhUrlRef.current;
+    if (!bvhUrl) {
+      throw new Error("No BVH animation available to export.");
+    }
+
+    const response = await fetch(bvhUrl, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to download BVH (status ${response.status}).`);
+    }
+
+    const blob = await response.blob();
+    let filename = bvhUrl.split('/').pop() || 'animation.bvh';
+    if (!/\.bvh$/i.test(filename)) {
+      const metaName = modelMetadataRef.current[0]?.displayName || 'animation';
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      filename = `${metaName}-${stamp}.bvh`;
+    }
+
+    saveAs(blob, filename);
+  }, []);
+
+  useEffect(() => {
+    if (onExportHandlersReady) {
+      onExportHandlersReady({ exportSelectedToGLB, exportCurrentBVH });
+    }
+  }, [onExportHandlersReady, exportSelectedToGLB, exportCurrentBVH]);
+
+  useEffect(() => {
+    bvhUrlRef.current = bvhFile;
+  }, [bvhFile]);
 
   useEffect(() => {
     console.log('[DEBUG] Canvas useEffect triggered', {
@@ -113,9 +311,15 @@ export default function Canvas({
     const newBox = new THREE.Box3().setFromObject(model.scene);
     
     // Position on ground
-    model.scene.position.y = -newBox.min.y;
+    const groundOffset = -newBox.min.y;
+    model.scene.position.y = groundOffset;
+    model.scene.userData = model.scene.userData || {};
+    model.scene.userData.normalizedScale = scaleFactor;
+    model.scene.userData.groundOffset = groundOffset;
+    model.scene.userData.originalHeight = currentHeight;
+    model.scene.userData.targetHeight = targetHeight;
     
-    return { scaleFactor, newBox };
+    return { scaleFactor, newBox, groundOffset };
   };
 
   // Helper function to calculate character positions
@@ -230,9 +434,15 @@ export default function Canvas({
     plane.receiveShadow = true;
     scene.add(plane);
 
+    const container = sceneRef.current;
+    const { clientWidth, clientHeight } = container;
+
+    const viewportWidth = clientWidth > 0 ? clientWidth : window.innerWidth;
+    const viewportHeight = clientHeight > 0 ? clientHeight : window.innerHeight;
+
     const camera = new THREE.PerspectiveCamera(
       45,
-      window.innerWidth / window.innerHeight,
+      viewportWidth / viewportHeight,
       1,
       2000
     );
@@ -244,12 +454,14 @@ export default function Canvas({
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(viewportWidth, viewportHeight, false);
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
 
-    if (sceneRef.current.firstChild) {
-      sceneRef.current.removeChild(sceneRef.current.firstChild);
+    if (container.firstChild) {
+      container.removeChild(container.firstChild);
     }
-    sceneRef.current.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.minDistance = 0;
@@ -330,6 +542,8 @@ export default function Canvas({
       // Clear previous mixers
       mixers = [];
       mixersRef.current = [];
+      animationClipsRef.current = [];
+      modelMetadataRef.current = [];
 
       if (selectedCharacters.length === 0) {
         // NO CHARACTERS SELECTED: Show default mesh.glb
@@ -339,7 +553,10 @@ export default function Canvas({
           });
 
           scene.add(targetModel.scene);
+          targetModel.scene.userData = targetModel.scene.userData || {};
+          targetModel.scene.userData.modelName = "default";
           modelsRef.current = [targetModel.scene];
+          modelMetadataRef.current = [{ displayName: "default", isMixamo: false, source: '/mesh/mesh.glb' }];
 
 
           targetModel.scene.traverse((child: any) => {
@@ -352,7 +569,10 @@ export default function Canvas({
           });
 
           // 🔧 NEW: Normalize default character scale
-          normalizeCharacterScale(targetModel);
+          const { scaleFactor, groundOffset } = normalizeCharacterScale(targetModel);
+          targetModel.scene.userData.characterScaleMultiplier = characterScale;
+          targetModel.scene.scale.setScalar(scaleFactor * characterScale);
+          targetModel.scene.position.y = groundOffset;
 
           // Center the single character
           const box = new THREE.Box3().setFromObject(targetModel.scene);
@@ -389,21 +609,28 @@ export default function Canvas({
         setLoadingCharacters(true);
         
         for (let i = 0; i < selectedCharacters.length; i++) {
-          const characterName = selectedCharacters[i];
+          const reference = selectedCharacters[i];
+          const asset = parseAssetReference(reference);
+          const label = asset.filename || reference;
+          const extension = asset.extension;
+          const isMixamoSource = Boolean(extension === 'fbx' || reference.includes('/mixamo/'));
           const position = getCharacterPosition(i, selectedCharacters.length);
 
           try {
-            console.log(`Loading character ${i + 1}/${selectedCharacters.length}: ${characterName}`);
+            console.log(`Loading character ${i + 1}/${selectedCharacters.length}: ${label}`);
             let targetModel: any;
-            if (characterName.toLowerCase().endsWith('.fbx') || characterName.includes('/mixamo/')) {
-              // Load FBX model directly (Mixamo)
+
+            if (isMixamoSource) {
               const fbx: any = await new Promise((resolve, reject) => {
-                fbxLoader.load(characterName, resolve, undefined, reject);
+                fbxLoader.load(asset.url, resolve, undefined, reject);
               });
-              targetModel = {scene: fbx};
+              targetModel = { scene: fbx };
+            } else if (extension === 'glb' || asset.url.startsWith('blob:')) {
+              targetModel = await new Promise((resolve, reject) => {
+                loader.load(asset.url, resolve, undefined, reject);
+              });
             } else {
-              // Custom: Generate and load GLB
-              await create_glb(characterName);
+              await create_glb(reference);
               await new Promise(resolve => setTimeout(resolve, 500));
               targetModel = await new Promise((resolve, reject) => {
                 loader.load(`/mesh/mesh.glb?t=${Date.now()}&char=${i}`, resolve, undefined, reject);
@@ -411,7 +638,14 @@ export default function Canvas({
             }
 
             scene.add(targetModel.scene);
+            targetModel.scene.userData = targetModel.scene.userData || {};
+            targetModel.scene.userData.modelName = label;
             modelsRef.current.push(targetModel.scene);
+            modelMetadataRef.current.push({
+              displayName: label,
+              isMixamo: isMixamoSource,
+              source: reference,
+            });
 
             targetModel.scene.traverse((child: any) => {
               if (child.isSkinnedMesh) {
@@ -422,15 +656,17 @@ export default function Canvas({
               }
             });
 
-            const { scaleFactor } = normalizeCharacterScale(targetModel, 2.0);
-            console.log(`Character ${i + 1} (${characterName}) scaled by: ${scaleFactor.toFixed(3)}`);
+            const { scaleFactor, groundOffset } = normalizeCharacterScale(targetModel, 2.0);
+            targetModel.scene.userData.characterScaleMultiplier = characterScale;
+            targetModel.scene.scale.setScalar(scaleFactor * characterScale);
+            targetModel.scene.position.y = groundOffset;
+            console.log(`Character ${i + 1} (${label}) scaled by: ${scaleFactor.toFixed(3)}`);
 
             targetModel.scene.position.x += position[0];
             targetModel.scene.position.z += position[2];
-            
+
             targetModels.push(targetModel);
-            
-            // Add skeleton helper if enabled
+
             if (showSkeleton) {
               targetModel.scene.traverse((child: any) => {
                 if (child.isSkinnedMesh) {
@@ -441,7 +677,7 @@ export default function Canvas({
               });
             }
           } catch (error) {
-            console.error(`Failed to load character ${characterName}:`, error);
+            console.error(`Failed to load character ${label}:`, error);
           }
         }
 
@@ -469,25 +705,37 @@ export default function Canvas({
           });
 
           const source = getSource(sourceModel);
+          lastSourceRef.current = source;
           
+          animationClipsRef.current = [];
+
           // Create mixer for each character
-          mixers = targetModels.map((targetModel, index) => {
-            console.log(`Applying motion to character ${index + 1}`);
-            // Determine if this is a Mixamo character based on the character name
-            console.log(selectedCharacters)
-            const characterName = selectedCharacters[index] || '';
-            const isMixamo = characterName ? (characterName.toLowerCase().endsWith('.fbx') || characterName.includes('/mixamo/')) : false;
-            const mixer = retargetModel(source, targetModel, isMixamo , characterName);
-            isMixamo ? normalizeCharacterScale(targetModel, 0.0011) : null;
-            return mixer;
-          }).filter((mixer): mixer is THREE.AnimationMixer => mixer !== null);
+          const retargetResults = targetModels.map((targetModel, index) => {
+            const metadata = modelMetadataRef.current[index] || {
+              displayName: selectedCharacters[index] || '',
+              isMixamo: false,
+              source: selectedCharacters[index] || '',
+            };
+            const { displayName, isMixamo, source: characterKey } = metadata;
+            console.log(`Applying motion to character ${index + 1}: ${displayName}`);
+            const retargetName = isMixamo ? characterKey : displayName;
+            const result = retargetModel(source, targetModel, isMixamo , retargetName);
+            return result;
+          }).filter((result): result is RetargetResult => result !== null);
+
+          mixers = retargetResults.map(result => result.mixer);
+          animationClipsRef.current = retargetResults.map(result => result.clip);
 
           // targetModels.forEach(model => {
           //   model.scene.position.x += 10
           // });
 
           mixersRef.current = mixers;
-          setDuration(source.clip.duration);
+          if (retargetResults.length > 0) {
+            setDuration(retargetResults[0].clip.duration);
+          } else {
+            setDuration(0);
+          }
 
           // Audio setup
           const audioPath = localStorage.getItem("audio");
@@ -544,14 +792,28 @@ export default function Canvas({
     });
 
     const onWindowResize = () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      if (!sceneRef.current) return;
+      const { clientWidth: width, clientHeight: height } = sceneRef.current;
+      if (height === 0 || width === 0) return;
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(width, height, false);
     };
 
     window.addEventListener("resize", onWindowResize);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && sceneRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        onWindowResize();
+      });
+      resizeObserver.observe(sceneRef.current);
+    }
     return () => {
       window.removeEventListener("resize", onWindowResize);
+      if (resizeObserver && sceneRef.current) {
+        resizeObserver.unobserve(sceneRef.current);
+      }
       renderer.setAnimationLoop(null);
       renderer.dispose();
       mixers.forEach(mixer => mixer.stopAllAction());
@@ -562,7 +824,10 @@ export default function Canvas({
   useEffect(() => {
     modelsRef.current.forEach(model => {
       if (model) {
-        model.scale.setScalar(characterScale);
+        const baseScale = (model as any)?.userData?.normalizedScale ?? 1;
+        (model as any).userData = (model as any).userData || {};
+        (model as any).userData.characterScaleMultiplier = characterScale;
+        model.scale.setScalar(baseScale * characterScale);
         model.rotation.y = (characterRotation * Math.PI) / 180;
         // Update skinning options for all SkinnedMesh children
         model.traverse((child: any) => {
@@ -605,11 +870,11 @@ export default function Canvas({
   }, [showSkeleton]);
 
   // 🔧 FIXED Play/Pause Handler with Debug Logging
-  const handlePlayPause = () => {
+  const handlePlayPause = useCallback(() => {
     const mixers = mixersRef.current;
-    
+
     console.log("Play button clicked, mixers:", mixers.length);
-    
+
     if (mixers.length > 0) {
       if (isPlaying) {
         // PAUSE: Stop all mixers
@@ -656,11 +921,14 @@ export default function Canvas({
     }
     
     // Toggle play state
-    setIsPlaying(!isPlaying);
-    console.log("Play state changed to:", !isPlaying);
-  };
+    const nextState = !isPlaying;
+    setIsPlaying(nextState);
+    isPlayingRef.current = nextState;
+    onPlayStateChange?.(nextState);
+    console.log("Play state changed to:", nextState);
+  }, [trimRange, onPlayStateChange, isPlaying]);
 
-  const handleSeek = (newTime: number) => {
+  const handleSeek = useCallback((newTime: number) => {
     const clampedTime = Math.max(trimRange[0], Math.min(newTime, trimRange[1]));
     const mixers = mixersRef.current;
     mixers.forEach(mixer => {
@@ -673,246 +941,136 @@ export default function Canvas({
     if (!isPlayingRef.current && rendererRef.current && sceneRef_three.current && cameraRef.current) {
       rendererRef.current.render(sceneRef_three.current, cameraRef.current);
     }
-  };
+  }, [trimRange]);
 
-  const handleTrimRangeChange = (newRange: number[]) => {
-    setTrimRange([newRange[0], newRange[1]] as [number, number]);
-    let currentProgress = progress;
-    
-    if (currentProgress < newRange[0]) currentProgress = newRange[0];
-    if (currentProgress > newRange[1]) currentProgress = newRange[1];
-    
-    const mixers = mixersRef.current;
-    mixers.forEach(mixer => mixer.setTime(currentProgress));
-    if (audioRef.current) audioRef.current.currentTime = currentProgress;
-    setProgress(currentProgress);
-  };
+  useEffect(() => {
+    if (onProgressChange) {
+      onProgressChange(progress);
+    }
+  }, [progress, onProgressChange]);
+
+  useEffect(() => {
+    if (onPlaybackHandlersReady) {
+      const handlers = {
+        play: () => {
+          if (!isPlayingRef.current) {
+            handlePlayPause();
+          }
+        },
+        pause: () => {
+          if (isPlayingRef.current) {
+            handlePlayPause();
+          }
+        },
+        seek: (time: number) => {
+          handleSeek(time);
+        },
+        toggle: () => {
+          handlePlayPause();
+        },
+      };
+      onPlaybackHandlersReady(handlers);
+    }
+  }, [onPlaybackHandlersReady, handlePlayPause, handleSeek]);
 
   return (
-    <div style={{ position: "relative", height: "100%" }} className="bg-gradient-to-br from-slate-50 to-slate-100">
+    <div style={{ position: "relative", height: "100%" }} className="bg-slate-50">
       <div ref={sceneRef} className="h-full" />
       
-      {/* Character loading indicator */}
-      {loadingCharacters && (
-        <div className="absolute top-6 left-6 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg backdrop-blur-sm border border-blue-500/20 animate-pulse">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
-            <span>Loading {selectedCharacters.length} Character{selectedCharacters.length > 1 ? 's' : ''}...</span>
-          </div>
-        </div>
-      )}
-      
-      {/* Character count indicator */}
-      {selectedCharacters.length > 0 && !loadingCharacters && (
-        <div className="absolute top-6 left-6 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg backdrop-blur-sm border border-emerald-500/20">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-white rounded-full"></div>
-            <span>{selectedCharacters.length} Character{selectedCharacters.length > 1 ? 's' : ''}: {selectedCharacters.map(char => char.split(' ')[0]).join(', ')}</span>
-          </div>
-        </div>
-      )}
-      
-      {/* Play Controls Card - Bottom Left */}
-      <div className="absolute bottom-6 left-6 w-96 bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6 z-50" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-        {/* Professional Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
-              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M8 5v10l8-5-8-5z"/>
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-800">Motion Controller</h3>
-              <p className="text-xs text-gray-500">Animation playback controls</p>
+      <div className="absolute top-6 left-6 z-50 flex max-w-xs flex-col gap-3">
+        {loadingCharacters && (
+          <div className="rounded-xl border border-slate-200 bg-white/90 px-4 py-2 text-sm text-slate-600 shadow-sm backdrop-blur">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+              <span>Loading {selectedCharacters.length} character{selectedCharacters.length !== 1 ? 's' : ''}...</span>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-sm font-mono text-gray-700 font-medium">
-              {progress.toFixed(1)}s / {duration.toFixed(1)}s
+        )}
+
+        {selectedCharacters.length > 0 && !loadingCharacters && (
+          <div className="rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Characters</div>
+            <div className="mt-1 text-sm font-medium text-slate-700">
+              {selectedCharacters.length} {selectedCharacters.length === 1 ? 'character' : 'characters'}
             </div>
-            <div className="text-xs text-gray-500">
-              {duration > 0 ? `${((progress / duration) * 100).toFixed(0)}%` : '0%'}
-            </div>
-          </div>
-        </div>
-        
-        {/* Enhanced Controls Row */}
-        <div className="flex items-center gap-4">
-          {/* Professional Play/Pause Button */}
-          <button
-            onClick={handlePlayPause}
-            disabled={loadingCharacters}
-            className={`w-14 h-14 rounded-2xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95
-              ${loadingCharacters 
-                ? 'bg-gray-200 cursor-not-allowed text-gray-400' 
-                : isPlaying
-                  ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-red-500/25'
-                  : 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-500/25'
-              }`}
-          >
-            {isPlaying ? (
-              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6 4h4v12H6V4zm4 0h4v12h-4V4z"/>
-              </svg>
-            ) : (
-              <svg className="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M8 5v10l8-5-8-5z"/>
-              </svg>
-            )}
-          </button>
-          
-          {/* Enhanced Progress Bar */}
-          <div className="flex-1">
-            <div className="mb-2">
-              <Slider
-                min={trimRange[0]}
-                max={trimRange[1] || duration}
-                step={0.01}
-                value={[progress]}
-                onValueChange={([val]) => handleSeek(val)}
-                disabled={loadingCharacters || duration === 0}
-                className="[&_.slider-track]:bg-gradient-to-r [&_.slider-track]:from-blue-200 [&_.slider-track]:to-blue-300 [&_.slider-thumb]:bg-blue-600 [&_.slider-thumb]:border-blue-700"
-              />
-            </div>
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>{trimRange[0].toFixed(1)}s</span>
-              <span>{trimRange[1].toFixed(1)}s</span>
+            <div className="mt-1 text-xs text-slate-500">
+              {selectedCharacters.map(char => char.split(' ')[0]).join(', ')}
             </div>
           </div>
-          
-          {/* Character Count Badge */}
-          {selectedCharacters.length > 1 && (
-            <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white px-3 py-1 rounded-lg text-xs font-semibold shadow-lg">
-              {selectedCharacters.length} chars
-            </div>
-          )}
-        </div>
+        )}
       </div>
       
-      {/* --- Professional Card Container --- */}
-      <div className="absolute top-6 right-6 bottom-6 flex flex-col gap-4 z-50">
+      {/* --- Overlays: Insights & Tools --- */}
+      <div className="absolute top-6 right-6 bottom-6 z-50 flex flex-col gap-4">
         {/* Card 1: Credits & Tokens */}
-        <div className="w-80 bg-white/80 backdrop-blur-xl shadow-2xl border border-white/20 rounded-2xl px-6 py-5 transition-all duration-300 hover:shadow-2xl hover:bg-white/90" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-          <div className="flex items-center justify-between mb-4">
+        <div className="w-72 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-lg backdrop-blur">
+          <div className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center shadow-lg">
-                <span className="text-white text-sm">🪙</span>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                🪙
               </div>
               <div>
-                <h3 className="font-semibold text-sm text-gray-800">Credits</h3>
-                <p className="text-xs text-gray-500">Token management</p>
+                <h3 className="text-sm font-semibold text-slate-800">Credits</h3>
+                <p className="text-xs text-slate-500">Token management</p>
               </div>
             </div>
-            <button className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-lg text-xs font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105">
-              <span className="text-sm">🪙</span>
+            <button
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100"
+              type="button"
+            >
               Refill
             </button>
           </div>
-          
-          <div className="space-y-4">
-            {/* Token Balance */}
-            <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-3">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-xs font-medium text-gray-600">Available Tokens</span>
-                <span className="text-lg font-bold text-gray-800">1,247</span>
+
+          <div className="space-y-4 text-slate-600">
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-slate-500">Available tokens</span>
+                <span className="text-base font-semibold text-slate-800">1,247</span>
               </div>
-              <div className="text-xs text-gray-500">Ready for motion generation</div>
+              <div className="mt-1 text-xs text-slate-400">Ready for motion generation</div>
             </div>
-            
-            {/* Motion Generation Capacity */}
-            <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-3">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-xs font-medium text-gray-600">Motion Generations</span>
-                <span className="text-lg font-bold text-blue-600">~24 remaining</span>
+
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <div className="flex items-baseline justify-between text-xs">
+                <span className="font-medium text-slate-500">Motion generations</span>
+                <span className="text-base font-semibold text-slate-800">~24 remaining</span>
               </div>
-              <div className="text-xs text-gray-500">Based on current usage</div>
+              <div className="mt-1 text-xs text-slate-400">Based on current usage</div>
             </div>
-            
-            {/* Enhanced Progress Bar */}
+
             <div className="space-y-2">
-              <div className="flex justify-between text-xs text-gray-600">
-                <span>Usage Progress</span>
-                <span>78%</span>
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Usage progress</span>
+                <span className="font-medium text-slate-700">78%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
-                <div 
-                  className="bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 h-full rounded-full transition-all duration-500 shadow-sm"
-                  style={{ width: '78%' }}
-                ></div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                <div className="h-full rounded-full bg-blue-500" style={{ width: '78%' }}></div>
               </div>
             </div>
-            
-            {/* Usage Stats */}
-            <div className="flex justify-between text-xs text-gray-500 bg-gray-50 rounded-lg p-2">
+
+            <div className="flex justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
               <span>Used: 342 tokens</span>
               <span>Total: 1,589 tokens</span>
             </div>
           </div>
         </div>
 
-        {/* Card 2: Character Mode Toggle */}
-        <div className="w-80 bg-white/80 backdrop-blur-xl shadow-2xl border border-white/20 rounded-2xl px-6 py-5 transition-all duration-300 hover:shadow-2xl hover:bg-white/90" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-          <div className="flex items-center justify-between mb-4">
+        {/* Card 2: Motion Chatbot */}
+        <div className="w-72 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-lg backdrop-blur">
+          <div className="border-b border-slate-200 px-6 py-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg">
-                <span className="text-white text-sm">👥</span>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                🤖
               </div>
               <div>
-                <h3 className="font-semibold text-sm text-gray-800">Character Mode</h3>
-                <p className="text-xs text-gray-500">Animation configuration</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-center mb-4">
-            <button
-              onClick={() => onMultiCharacterModeChange && onMultiCharacterModeChange(!multiCharacterMode)}
-              className={`flex items-center gap-3 px-6 py-3 rounded-xl shadow-lg transition-all duration-300 text-sm font-semibold transform hover:scale-105 active:scale-95
-                ${multiCharacterMode 
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-500/25' 
-                  : 'bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 border border-gray-300 shadow-gray-500/10'
-                }`}
-            >
-              {multiCharacterMode ? (
-                <>
-                  <span className="text-lg">👥</span>
-                  Multi Character
-                </>
-              ) : (
-                <>
-                  <span className="text-lg">👤</span>
-                  Single Character
-                </>
-              )}
-            </button>
-          </div>
-          
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-3">
-            <div className="text-xs text-gray-600 text-center font-medium">
-              {multiCharacterMode 
-                ? "Select multiple characters to animate together" 
-                : "Select one character at a time"
-              }
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Motion Chatbot */}
-        <div className="w-80 flex-1 bg-white/80 backdrop-blur-xl shadow-2xl border border-white/20 rounded-2xl transition-all duration-300 hover:shadow-2xl hover:bg-white/90 overflow-hidden" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)' }}>
-          <div className="p-6 pb-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-lg">
-                <span className="text-white text-sm">🤖</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-sm text-gray-800">Motion AI</h3>
-                <p className="text-xs text-gray-500">Generate animations</p>
+                <h3 className="text-sm font-semibold text-slate-800">Motion AI</h3>
+                <p className="text-xs text-slate-500">Generate animations</p>
               </div>
             </div>
           </div>
           {onFileReceived && onSend && onAvatarUpdate && (
-            <div className="px-3 pb-3">
+            <div className="px-4 py-4">
               <Chatbot
                 onFileReceived={onFileReceived}
                 onSend={onSend}
@@ -924,132 +1082,177 @@ export default function Canvas({
       </div>
     </div>
   );
-}
+};
+
+const Canvas = React.memo(CanvasComponent);
+
+// m_avg_* (target) -> source bone name (your BVH/FBX rig)
+const targetToSourceName = {
+  // root / pelvis
+  m_avg_root:   "Hips",     // if your pipeline wants a root driver
+  m_avg_Pelvis: "Hips",
+
+  // spine (note your source has Spine, Spine1, Spine2)
+  m_avg_Spine1: "Spine",
+  m_avg_Spine2: "Spine1",
+  m_avg_Spine3: "Spine2",
+  m_avg_Neck:   "Neck",
+  m_avg_Head:   "Head",
+
+  // left leg
+  m_avg_L_Hip:   "LeftUpLeg",
+  m_avg_L_Knee:  "LeftLeg",
+  m_avg_L_Ankle: "LeftFoot",
+  m_avg_L_Foot:  "LeftToe",     // closest match; target has no explicit toe base
+
+  // right leg
+  m_avg_R_Hip:   "RightUpLeg",
+  m_avg_R_Knee:  "RightLeg",
+  m_avg_R_Ankle: "RightFoot",
+  m_avg_R_Foot:  "RightToe",
+
+  // left arm (your target has a Collar bone, source does not)
+  m_avg_L_Collar:   "LeftShoulder",
+  m_avg_L_Shoulder: "LeftArm",
+  m_avg_L_Elbow:    "LeftForeArm",
+  m_avg_L_Wrist:    "LeftHand",
+  m_avg_L_Hand:     "LeftHand", // extra hand node → reuse wrist driver
+
+  // right arm
+  m_avg_R_Collar:   "RightShoulder",
+  m_avg_R_Shoulder: "RightArm",
+  m_avg_R_Elbow:    "RightForeArm",
+  m_avg_R_Wrist:    "RightHand",
+  m_avg_R_Hand:     "RightHand"
+};
+
+// in retargetOptions
+
+
+
+export default Canvas;
 
 // Helper functions remain the same
 function getSource(sourceModel: any) {
   console.log('Source model:', sourceModel);
-  const clip = sourceModel.clip;
-  const helper = new THREE.SkeletonHelper(sourceModel.skeleton.bones[0]);
-  const skeleton = new THREE.Skeleton(helper.bones);
-  const mixer = new THREE.AnimationMixer(sourceModel.skeleton.bones[0]);
-  mixer.clipAction(sourceModel.clip).play();
+  const skeleton: THREE.Skeleton | undefined = sourceModel.skeleton;
+  const clip: THREE.AnimationClip = sourceModel.clip;
+  const rootBone = skeleton?.bones?.[0];
+  if (!skeleton || !rootBone) {
+    throw new Error("BVH source skeleton is missing bones.");
+  }
+  if (rootBone) {
+    skeleton.pose();
+  }
+  const mixer = new THREE.AnimationMixer(rootBone);
+  mixer.clipAction(clip).play();
   return { clip, skeleton, mixer };
 }
 
 function getTargetSkin(targetModel: any, characterName: string) {
-  console.log('characterName:', characterName);
-  console.log('mixamo_targets:', mixamo_targets);
+
   const targetSkin = mixamo_targets.find(target => target.charactername == characterName);
   console.log('Target skin:', targetSkin?.targetskin);
-  return targetModel.scene.children[targetSkin?.targetskin || 0];
+  let candidate = targetSkin ? targetModel.scene.children[targetSkin.targetskin] : undefined;
+  if (!candidate) {
+    targetModel.scene.traverse((child: any) => {
+      if (!candidate && child.isSkinnedMesh) {
+        candidate = child;
+      }
+    });
+  }
+  return candidate;
 }
 
 
 
 // Retargeting function for Mixamo characters (FBX files)
-function retargetMixamoModel(source: any, targetModel: any, characterName: string) {
-  const rig = findPrimaryMixamoRig(targetModel.scene|| targetModel);
+function retargetMixamoModel(source: any, targetModel: any, characterName: string): RetargetResult | null {
+  const targetScene = targetModel.scene || targetModel;
+  const rig = findPrimaryMixamoRig(targetScene);
   console.log('Rig:', rig);
 
-  
+
   let targetSkin: any = getTargetSkin(targetModel, characterName);
+  
 
-
-  // Find the SkinnedMesh in the target model
-  targetModel.scene.traverse((child: any) => {
-    if (!targetSkin && child.isSkinnedMesh) {
-      targetSkin = child;
-    }
-  });
+  // // Find the SkinnedMesh in the target model
+  // targetModel.scene.traverse((child: any) => {
+  //   if (!targetSkin && child.isSkinnedMesh) {
+  //     targetSkin = child;
+  //   }
+  // });
   
   if (!targetSkin) {
     console.warn('No SkinnedMesh found for Mixamo target model');
     return null;
   }
-  
+
   console.log('Retargeting Mixamo model:', targetModel);
   
-  // Mixamo-specific rotation matrices for proper bone alignment
-  const rotateCW180 = new THREE.Matrix4().makeRotationZ(THREE.MathUtils.degToRad(180));
-  const rotateFoot = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(-65), 
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(180)
-  ));
-  const rotateRightArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(112), 
-    THREE.MathUtils.degToRad(-10), 
-    THREE.MathUtils.degToRad(90)
-  ));
-  const rotateRightForeArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(99), 
-    THREE.MathUtils.degToRad(-3), 
-    THREE.MathUtils.degToRad(73)
-  ));
-  const rotateLeftArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(104), 
-    THREE.MathUtils.degToRad(20), 
-    THREE.MathUtils.degToRad(-73)
-  ));
-  const rotateLeftForeArm = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(68), 
-    THREE.MathUtils.degToRad(-7), 
-    THREE.MathUtils.degToRad(-82)
-  ));
-  const rotateLeftShoulder = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(90), 
-    THREE.MathUtils.degToRad(-11), 
-    THREE.MathUtils.degToRad(-82)
-  ));
-  const rotateRightShoulder = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(100), 
-    THREE.MathUtils.degToRad(-3), 
-    THREE.MathUtils.degToRad(73)
-  ));
-  const rotateLeftHand = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(-90)
-  ));
-  const rotateRightHand = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(0), 
-    THREE.MathUtils.degToRad(90)
-  ));
-
+ 
   const retargetOptions = {
     hip: 'Hips',
     getBoneName: function (bone: any) {
+      if (targetModel.scene.userData.modelName == "basic.fbx") {
+        return targetToSourceName[bone.name as keyof typeof targetToSourceName] || bone.name;
+      }
       return bone.name.replace(/^mixamorig/, '');
     },
-    rotationOrder: "ZYX", 
-    preserveHipPosition: true, 
+    // getBoneName: (bone: any) => targetToSourceName[bone.name as keyof typeof targetToSourceName] || bone.name,
+    rotationOrder: "ZYX",
+    preserveHipPosition: true,
     useTargetMatrix: true,
-    scale: 142,
-    localOffsets: {
-      'mixamorigLeftUpLeg': rotateCW180,
-      'mixamorigRightUpLeg': rotateCW180,
-      'mixamorigLeftLeg': rotateCW180,
-      'mixamorigRightLeg': rotateCW180,
-      'mixamorigLeftFoot': rotateFoot,
-      'mixamorigRightFoot': rotateFoot,
-      'mixamorigRightShoulder': rotateRightShoulder,
-      'mixamorigLeftShoulder': rotateLeftShoulder,
-      'mixamorigRightArm': rotateRightArm,
-      'mixamorigLeftArm': rotateLeftArm,
-      'mixamorigRightForeArm': rotateRightForeArm,
-      'mixamorigLeftForeArm': rotateLeftForeArm,
-      'mixamorigLeftHand': rotateLeftHand,
-      'mixamorigRightHand': rotateRightHand,
-    },
+    scale: targetModel.scene.userData.modelName == "basic.fbx" ? 1 : 100,
+    // localOffsets: {
+    //   'mixamorigLeftUpLeg': rotateCW180,
+    //   'mixamorigRightUpLeg': rotateCW180,
+    //   'mixamorigLeftLeg': rotateCW180,
+    //   'mixamorigRightLeg': rotateCW180,
+    //   'mixamorigLeftFoot': rotateFoot,
+    //   'mixamorigRightFoot': rotateFoot,
+    //   'mixamorigRightShoulder': rotateRightShoulder,
+    //   'mixamorigLeftShoulder': rotateLeftShoulder,
+    //   'mixamorigRightArm': rotateRightArm,
+    //   'mixamorigLeftArm': rotateLeftArm,
+    //   'mixamorigRightForeArm': rotateRightForeArm,
+    //   'mixamorigLeftForeArm': rotateLeftForeArm,
+    //   'mixamorigLeftHand': rotateLeftHand,
+    //   'mixamorigRightHand': rotateRightHand,
+    // },
   };
+
+  const sourceSkeleton: THREE.Skeleton | undefined = source?.skeleton;
+
+  if (sourceSkeleton && targetSkin?.isSkinnedMesh) {
+    const cacheKey = `${characterName || targetSkin.uuid}:${sourceSkeleton.uuid}`;
+    let localOffsets = mixamoOffsetCache.get(cacheKey);
+
+    if (!localOffsets || Object.keys(localOffsets).length === 0) {
+      localOffsets = computeLocalOffsets(targetSkin, sourceSkeleton, {
+        getBoneName: retargetOptions.getBoneName,
+        names: retargetOptions.names,
+      });
+
+      if (localOffsets && Object.keys(localOffsets).length > 0) {
+        mixamoOffsetCache.set(cacheKey, localOffsets);
+      }
+    }
+
+    if (localOffsets && Object.keys(localOffsets).length > 0) {
+      retargetOptions.localOffsets = localOffsets;
+    }
+  }
   
-  // Scale the target model for Mixamo
-  // targetModel.scene.scale.setScalar(0.011);
   
+
   const retargetedClip = SkeletonUtils.retargetClip(targetSkin, source.skeleton, source.clip, retargetOptions);
   console.log('Mixamo retargetedClip:', retargetedClip);
+
+  if (!retargetedClip || retargetedClip.tracks.length === 0) {
+    console.error('Mixamo retargeting did not produce animation tracks.');
+    return null;
+  }
   
   const FOOT_RX = /Foot$|ToeBase$/i;
   retargetedClip.tracks = retargetedClip.tracks.map(track => {
@@ -1061,14 +1264,27 @@ function retargetMixamoModel(source: any, targetModel: any, characterName: strin
     }
     return track;
   });
+  const mixamoTarget = mixamo_targets.find(target => target.charactername == characterName);
+  const baseScale = typeof targetScene.userData?.normalizedScale === "number" ? targetScene.userData.normalizedScale : 1;
+  const scaleMultiplier = typeof targetScene.userData?.originalHeight === "number" ? targetScene.userData.originalHeight : 1;
+
+  targetModel.scene.scale.setScalar(targetModel.scene.userData.modelName == "basic.fbx" ? 1 : baseScale/30);
+  targetScene.updateMatrixWorld(true);
+
+  const mixamoOffset = mixamoTarget?.yoffset || 0;
+  const bbox = new THREE.Box3().setFromObject(targetScene);
+  const groundOffset = -bbox.min.y;
+  targetScene.userData.groundOffset = groundOffset;
+  targetScene.position.y = groundOffset + mixamoOffset;
 
   const mixer = new THREE.AnimationMixer(targetSkin);
   mixer.clipAction(retargetedClip).play();
-  return mixer;
+
+  return { mixer, clip: retargetedClip };
 }
 
 // Retargeting function for custom characters (GLB files)
-function retargetCustomModel(source: any, targetModel: any) {
+function retargetCustomModel(source: any, targetModel: any): RetargetResult | null {
   let targetSkin: any = null;
   
   // Find the SkinnedMesh in the target model
@@ -1109,7 +1325,7 @@ function retargetCustomModel(source: any, targetModel: any) {
     if (fallbackClip.tracks.length > 0) {
       const mixer = new THREE.AnimationMixer(targetSkin);
       mixer.clipAction(fallbackClip).play();
-      return mixer;
+      return { mixer, clip: fallbackClip };
     }
   }
   
@@ -1118,15 +1334,15 @@ function retargetCustomModel(source: any, targetModel: any) {
   // Only play if we have tracks
   if (retargetedClip.tracks.length > 0) {
     mixer.clipAction(retargetedClip).play();
+    return { mixer, clip: retargetedClip };
   } else {
     console.error('No animation tracks found after custom retargeting!');
+    return null;
   }
-  
-  return mixer;
 }
 
 // Main retargeting function that determines which method to use
-function retargetModel(source: any, targetModel: any, isMixamo: boolean = false , characterName: string) {
+function retargetModel(source: any, targetModel: any, isMixamo: boolean = false , characterName: string): RetargetResult | null {
   if (isMixamo) {
     return retargetMixamoModel(source, targetModel, characterName);
   } else {

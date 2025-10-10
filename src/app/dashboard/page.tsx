@@ -1,4 +1,4 @@
-"use client"
+"use client";
 import { useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Canvas from "@/components/Canvas"
@@ -16,19 +16,17 @@ import create_glb from "@/components/create_glb"
 import { Loader2 } from "lucide-react"
 import type { ProjectRow } from "@/lib/types/projects"
 
-export default function Home() {
+export default function DashboardClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const projectId = searchParams.get("projectId")
   const [bvhFile, setBvhFile] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [trigger, setTrigger] = useState(false)
-  // 🆕 NEW: Multi-character state management
   const [multiCharacterMode, setMultiCharacterMode] = useState(false)
   const [selectedAvatars, setSelectedAvatars] = useState<string[]>([])
   const [activePanel, setActivePanel] = useState("avatars")
-  
-  // 🆕 NEW: Play controls state (copied from Canvas)
+
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
   const [_trimRange, setTrimRange] = useState([0, 0])
@@ -75,10 +73,8 @@ export default function Home() {
     }
   }
 
-  // 🔄 UPDATED: Handle single character selection (for backward compatibility)
   const handleAvatarSelect = async (folderName: string) => {
     try {
-      // Handle clearing selection
       if (!folderName || folderName === '') {
         setSelectedAvatars([])
         console.log("[DEBUG] handleAvatarSelect: Selection cleared");
@@ -86,7 +82,6 @@ export default function Home() {
         return
       }
 
-      // If a Mixamo FBX path is selected, use selectedAvatars to drive Canvas
       if (folderName.toLowerCase().endsWith('.fbx') || folderName.includes('/assets/mixamo/')) {
         setSelectedAvatars([folderName])
         setTrigger((prev) => !prev)
@@ -104,7 +99,6 @@ export default function Home() {
     }
   }
 
-  // 🆕 NEW: Handle multi-character selection
   const handleAvatarsSelect = (avatarFilenames: string[]) => {
     setSelectedAvatars(avatarFilenames)
     console.log("Selected avatars:", avatarFilenames)
@@ -233,16 +227,12 @@ export default function Home() {
     }
   }, [projectId])
 
-  // 🆕 NEW: Toggle between single and multi-character mode
   const toggleCharacterMode = () => {
     setMultiCharacterMode(!multiCharacterMode)
     setSelectedAvatars([])
     console.log("[DEBUG] toggleCharacterMode: Mode toggled, toggling trigger");
     setTrigger((prev) => !prev)
   }
-
-  // Debug log for Canvas props
-  console.log('[DEBUG] Canvas props:', {bvhFile, trigger, selectedCharacters: multiCharacterMode ? selectedAvatars : [], isPlaying: false, multiCharacterMode});
 
   const handleBackToProjects = () => {
     router.push("/projects")

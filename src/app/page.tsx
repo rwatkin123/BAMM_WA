@@ -2,17 +2,18 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import "./styles.css"; // ✅ relative to page.tsx
-const ThreeCanvas = dynamic(() => import("../components/ThreeCanvas"), { ssr: false });
+import "./styles.css";
+
+const ThreeCanvas = dynamic(() => import("../components/ThreeCanvas"), {
+  ssr: false,
+});
 
 export default function Page() {
-
-
   return (
     <>
-<div id="model-viewer">
-  <ThreeCanvas />
-</div>
+      <div id="model-viewer">
+        <ThreeCanvas />
+      </div>
 
       <div className="container">
         <nav className="navbar">
@@ -30,16 +31,19 @@ export default function Page() {
               <h1>BAMM</h1>
               <h2>3D Model Generation</h2>
               <p>
-                Experience the future of 3D modeling with our cutting-edge technology. Transform your
-                ideas into stunning 3D models with unprecedented ease and quality.
+                Experience the future of 3D modeling with our cutting-edge
+                technology. Transform your ideas into stunning 3D models with
+                unprecedented ease and quality.
               </p>
-              <Link href="/projects">
+              <Link href="/dashboard">
                 <button className="cta-button">Get Started</button>
               </Link>
             </div>
             <div className="model-info">
               <span className="model-name">Loading...</span>
-              <span className="model-description">Experience our high-quality 3D models</span>
+              <span className="model-description">
+                Experience our high-quality 3D models
+              </span>
             </div>
           </section>
 
@@ -103,9 +107,15 @@ export default function Page() {
               <a href="#contact">Contact</a>
             </div>
             <div className="footer-social">
-              <a href="#" className="social-link">Twitter</a>
-              <a href="#" className="social-link">LinkedIn</a>
-              <a href="#" className="social-link">GitHub</a>
+              <a href="#" className="social-link">
+                Twitter
+              </a>
+              <a href="#" className="social-link">
+                LinkedIn
+              </a>
+              <a href="#" className="social-link">
+                GitHub
+              </a>
             </div>
           </div>
           <div className="footer-bottom">

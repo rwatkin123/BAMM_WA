@@ -2,15 +2,18 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Canvas from "@/components/Canvas"
+import SidebarNav from "@/components/SidebarNav"
+import AvatarGrid from "@/components/AvatarGrid"
+import ImportPanel from "@/components/ImportPanel"
+import ExportPanel from "@/components/ExportPanel"
+import Chatbot from "@/components/Chatbot"
+import MeasurementControls, { type Measurements } from "@/components/MeasurementControls"
+import TimelinePanel from "@/components/workspace/TimelinePanel"
+import { CharacterControlsProvider } from "@/contexts/CharacterControlsContext"
 import axios from "axios"
 import createAndSaveGLB from "@/lib/createMesh"
 import create_glb from "@/components/create_glb"
-import { CharacterControlsProvider } from "@/contexts/CharacterControlsContext"
-import InspectorPanel from "@/components/workspace/InspectorPanel"
-import TimelinePanel from "@/components/workspace/TimelinePanel"
-import WorkspaceHeader from "@/components/workspace/WorkspaceHeader"
 import { Loader2 } from "lucide-react"
-import type { Measurements } from "@/components/MeasurementControls"
 import type { ProjectRow } from "@/lib/types/projects"
 
 export default function Home() {
@@ -23,6 +26,7 @@ export default function Home() {
   // 🆕 NEW: Multi-character state management
   const [multiCharacterMode, setMultiCharacterMode] = useState(false)
   const [selectedAvatars, setSelectedAvatars] = useState<string[]>([])
+  const [activePanel, setActivePanel] = useState("avatars")
   
   // 🆕 NEW: Play controls state (copied from Canvas)
   const [progress, setProgress] = useState(0)
@@ -324,35 +328,93 @@ export default function Home() {
     }
   }
 
+  const renderSidebarPanel = () => {
+    switch (activePanel) {
+      case "avatars":
+        return (
+          <div className="flex h-full flex-col gap-4 bg-white/80 p-4">
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-600">
+              <span>Character Mode</span>
+              <button
+                type="button"
+                onClick={toggleCharacterMode}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                  multiCharacterMode ? "bg-blue-600 text-white shadow-sm" : "bg-slate-200 text-slate-700"
+                }`}
+              >
+                {multiCharacterMode ? "Multi" : "Single"}
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white/70">
+              <AvatarGrid
+                onSelectAvatar={!multiCharacterMode ? handleAvatarSelect : undefined}
+                onSelectAvatars={multiCharacterMode ? handleAvatarsSelect : undefined}
+                selectedAvatars={selectedAvatars}
+                multiCharacterMode={multiCharacterMode}
+                maxCharacters={4}
+                className="w-full h-full"
+                fullHeight={true}
+                scrollable={true}
+              />
+            </div>
+          </div>
+        )
+      case "adjust":
+        return (
+          <div className="h-full overflow-y-auto bg-white/80 p-4">
+            <MeasurementControls
+              initialMeasurements={measurements}
+              onChange={handleMeasurementsChange}
+            />
+          </div>
+        )
+      case "import":
+        return (
+          <div className="h-full overflow-y-auto bg-white/80 p-4">
+            <ImportPanel onImportFile={handleImportModel} />
+          </div>
+        )
+      case "export":
+        return (
+          <div className="h-full overflow-y-auto bg-white/80 p-4">
+            <ExportPanel
+              onExportGLB={exportHandlers?.exportSelectedToGLB}
+              onExportBVH={exportHandlers?.exportCurrentBVH}
+            />
+          </div>
+        )
+      case "settings":
+      case "profile":
+        return (
+          <div className="flex h-full flex-col items-center justify-center bg-white/80 p-6 text-center text-sm text-slate-500">
+            <p className="font-medium text-slate-700">
+              {activePanel === "settings" ? "Workspace settings coming soon." : "Profile tools coming soon."}
+            </p>
+            <p className="mt-2 text-xs text-slate-400">
+              Core animation features remain available while we restore the classic dashboard look.
+            </p>
+          </div>
+        )
+      default:
+        return null
+    }
+  }
+
   return (
     <CharacterControlsProvider>
-      <div className="flex h-screen overflow-hidden bg-slate-200">
-        <div className="flex flex-1 min-h-0 flex-col bg-slate-100">
-          <WorkspaceHeader
-            characterCount={selectedAvatars.length}
-            projectName={projectName}
-            onBackToProjects={handleBackToProjects}
-            onSave={projectId ? handleSaveProject : undefined}
-            isSaving={isSavingProject}
-          />
-          <div className="flex flex-1 min-h-0 overflow-hidden">
-            <InspectorPanel
-              multiCharacterMode={multiCharacterMode}
-              onToggleCharacterMode={toggleCharacterMode}
-              selectedAvatars={selectedAvatars}
-              onSelectAvatar={handleAvatarSelect}
-              onSelectAvatars={handleAvatarsSelect}
-              onImportFile={handleImportModel}
-              measurements={measurements}
-              onMeasurementsChange={handleMeasurementsChange}
-              exportHandlers={exportHandlers}
-            />
-            <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-              <div className="relative flex-1 min-h-0 overflow-hidden bg-slate-900">
+      <div className="flex h-screen bg-slate-100 text-slate-900">
+        <SidebarNav activePanel={activePanel} onSelect={setActivePanel} />
+        <div className="flex flex-1 overflow-hidden">
+          <aside className="w-80 flex-shrink-0 border-r border-slate-200 bg-slate-50/80 backdrop-blur">
+            {renderSidebarPanel()}
+          </aside>
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex flex-1 overflow-hidden bg-slate-100/40">
+              <div className="relative flex-1 bg-slate-950">
                 {loading && (
-                  <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 backdrop-blur">
-                    <Loader2 className="h-8 w-8 animate-spin text-white" />
-                    <p className="ml-2 text-sm font-medium text-white">Generating motion...</p>
+                  <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-slate-950/60 backdrop-blur-sm">
+                    <Loader2 className="h-9 w-9 animate-spin text-white" />
+                    <p className="text-sm font-medium text-slate-100">Generating motion…</p>
                   </div>
                 )}
                 <Canvas 
@@ -367,11 +429,20 @@ export default function Home() {
                   onFileReceived={handleFileReceived}
                   onSend={handleSend}
                   onAvatarUpdate={handleAvatarUpdate}
-              onExportHandlersReady={setExportHandlers}
+                  onExportHandlersReady={setExportHandlers}
                   onPlaybackHandlersReady={setPlaybackHandlers}
                   onPlayStateChange={setIsPlaying}
                 />
+                {/* <div className="pointer-events-auto absolute right-6 top-6 z-30 max-w-xs">
+                  <Chatbot
+                    onFileReceived={handleFileReceived}
+                    onSend={handleSend}
+                    onAvatarUpdate={handleAvatarUpdate}
+                  />
+                </div> */}
               </div>
+            </div>
+            <div className="border-t border-slate-200 bg-white/80 backdrop-blur">
               <TimelinePanel
                 progress={progress}
                 duration={duration}

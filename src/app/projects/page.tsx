@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, FolderOpen, Plus, Trash2 } from "lucide-react";
-import type { ProjectRow } from "@/lib/types/projects";
+import type { ProjectRow } from "@/types/projects";
 
 const PROJECTS_ENDPOINT = "/api/projects";
 

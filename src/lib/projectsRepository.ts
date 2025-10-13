@@ -1,6 +1,6 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { getServiceSupabaseClient } from "@/lib/supabaseClients";
-import type { ProjectRow } from "@/lib/types/projects";
+import type { ProjectRow } from "@/types/projects";
 
 export interface CreateProjectInput {
   name: string;

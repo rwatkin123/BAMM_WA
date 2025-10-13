@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 import { useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Canvas from "@/components/Canvas"
+import Canvas from "@/components/canvas/Canvas"
 import axios from "axios"
 import createAndSaveGLB from "@/lib/createMesh"
 import create_glb from "@/components/create_glb"
@@ -12,7 +12,7 @@ import TimelinePanel from "@/components/workspace/TimelinePanel"
 import WorkspaceHeader from "@/components/workspace/WorkspaceHeader"
 import { Loader2 } from "lucide-react"
 import type { Measurements } from "@/components/MeasurementControls"
-import type { ProjectRow } from "@/lib/types/projects"
+import type { ProjectRow } from "@/types/projects"
 
 export default function DashboardClient() {
   const router = useRouter()

@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Canvas from "@/components/Canvas"
+import Canvas from "@/components/canvas/Canvas"
 import SidebarNav from "@/components/SidebarNav"
 import AvatarGrid from "@/components/AvatarGrid"
 import ImportPanel from "@/components/ImportPanel"
@@ -14,7 +14,7 @@ import axios from "axios"
 import createAndSaveGLB from "@/lib/createMesh"
 import create_glb from "@/components/create_glb"
 import { Loader2 } from "lucide-react"
-import type { ProjectRow } from "@/lib/types/projects"
+import type { ProjectRow } from "@/types/projects"
 
 export default function Home() {
   const router = useRouter()

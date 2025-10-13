@@ -8,7 +8,6 @@ import ImportPanel from "@/components/ImportPanel"
 import ExportPanel from "@/components/ExportPanel"
 import Chatbot from "@/components/Chatbot"
 import MeasurementControls, { type Measurements } from "@/components/MeasurementControls"
-import TimelinePanel from "@/components/workspace/TimelinePanel"
 import { CharacterControlsProvider } from "@/contexts/CharacterControlsContext"
 import axios from "axios"
 import createAndSaveGLB from "@/lib/createMesh"
@@ -441,21 +440,6 @@ export default function Home() {
                   />
                 </div> */}
               </div>
-            </div>
-            <div className="border-t border-slate-200 bg-white/80 backdrop-blur">
-              <TimelinePanel
-                progress={progress}
-                duration={duration}
-                isPlaying={isPlaying}
-                onTogglePlay={() => playbackHandlers?.toggle()}
-                onSeek={(time) => {
-                  if (playbackHandlers) {
-                    playbackHandlers.seek(time)
-                  } else {
-                    setProgress(time)
-                  }
-                }}
-              />
             </div>
           </div>
         </div>

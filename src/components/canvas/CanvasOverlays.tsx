@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import Chatbot from "@/components/Chatbot";
+import TimelinePanel from "@/components/workspace/TimelinePanel";
+import { ChevronDown, Check } from "lucide-react";
 
 interface CanvasOverlaysProps {
   loadingCharacters: boolean;
@@ -7,15 +9,55 @@ interface CanvasOverlaysProps {
   onFileReceived?: (filename: string) => void;
   onSend?: () => void;
   onAvatarUpdate?: () => void;
+  progress?: number;
+  duration?: number;
+  isPlaying?: boolean;
+  onTogglePlay?: () => void;
+  onSeek?: (time: number) => void;
 }
+
+type AIModel = {
+  id: string;
+  name: string;
+  description: string;
+  available: boolean;
+};
+
+const AI_MODELS: AIModel[] = [
+  {
+    id: "bamm",
+    name: "BAMM",
+    description: "Body-Aware Motion Model",
+    available: true,
+  },
+  {
+    id: "maskcontrol",
+    name: "MaskControl",
+    description: "Coming soon",
+    available: false,
+  },
+  {
+    id: "dancemosaic",
+    name: "DanceMosaic",
+    description: "Coming soon",
+    available: false,
+  },
+];
 
 export function CanvasOverlays({
   loadingCharacters,
   selectedCharacters,
   onFileReceived,
   onSend,
-  onAvatarUpdate
+  onAvatarUpdate,
+  progress = 0,
+  duration = 0,
+  isPlaying = false,
+  onTogglePlay,
+  onSeek,
 }: CanvasOverlaysProps) {
+  const [selectedModel, setSelectedModel] = useState<AIModel>(AI_MODELS[0]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   return (
     <>
       <div className="absolute top-6 left-6 z-50 flex max-w-xs flex-col gap-3">
@@ -95,9 +137,9 @@ export function CanvasOverlays({
           </div>
         </div>
 
-        <div className="w-72 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-lg backdrop-blur">
+        <div className="w-72 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-lg backdrop-blur flex flex-col">
           <div className="border-b border-slate-200 px-6 py-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 mb-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
                 🤖
               </div>
@@ -106,16 +148,88 @@ export function CanvasOverlays({
                 <p className="text-xs text-slate-500">Generate animations</p>
               </div>
             </div>
+            
+            {/* Model Selector Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-800">{selectedModel.name}</span>
+                  {!selectedModel.available && (
+                    <span className="text-xs text-slate-400">(Coming soon)</span>
+                  )}
+                </div>
+                <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {isDropdownOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setIsDropdownOpen(false)}
+                  />
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-lg z-20 overflow-hidden">
+                    {AI_MODELS.map((model) => (
+                      <button
+                        key={model.id}
+                        onClick={() => {
+                          if (model.available) {
+                            setSelectedModel(model);
+                            setIsDropdownOpen(false);
+                          }
+                        }}
+                        disabled={!model.available}
+                        className={`w-full px-3 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors ${
+                          !model.available ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                        } ${selectedModel.id === model.id ? 'bg-slate-50' : ''}`}
+                      >
+                        <div className="flex-1 text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-slate-800">{model.name}</span>
+                            {!model.available && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                                Soon
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">{model.description}</p>
+                        </div>
+                        {selectedModel.id === model.id && (
+                          <Check className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           {onFileReceived && onSend && onAvatarUpdate && (
-            <div className="px-4 py-4">
+            <div className="px-4 py-4 flex-1 overflow-auto">
               <Chatbot
                 onFileReceived={onFileReceived}
                 onSend={onSend}
                 onAvatarUpdate={onAvatarUpdate}
+                selectedModel={selectedModel.id}
               />
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Timeline Panel - Floating at bottom */}
+      <div className="absolute bottom-6 left-6 right-80 z-50">
+        <div className="rounded-2xl border border-slate-200 bg-white/90 shadow-lg backdrop-blur overflow-hidden">
+          <TimelinePanel
+            progress={progress}
+            duration={duration}
+            isPlaying={isPlaying}
+            onTogglePlay={onTogglePlay}
+            onSeek={onSeek}
+            className="border-0"
+          />
         </div>
       </div>
     </>

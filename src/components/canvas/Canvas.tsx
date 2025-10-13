@@ -678,6 +678,11 @@ const CanvasComponent = ({
         onFileReceived={onFileReceived}
         onSend={onSend}
         onAvatarUpdate={onAvatarUpdate}
+        progress={progress}
+        duration={duration}
+        isPlaying={isPlaying}
+        onTogglePlay={handlePlayPause}
+        onSeek={handleSeek}
       />
     </div>
   );

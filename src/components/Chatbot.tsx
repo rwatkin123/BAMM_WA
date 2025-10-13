@@ -11,12 +11,20 @@ interface ChatbotProps {
   onFileReceived: (filename: string) => void;
   onSend: () => void;
   onAvatarUpdate: () => void;
+  selectedModel?: string;
 }
-const port = "https://relaxing-guiding-sailfish.ngrok-free.app"
+
+// API endpoints for different models
+const MODEL_ENDPOINTS = {
+  bamm: "https://relaxing-guiding-sailfish.ngrok-free.app",
+  maskcontrol: "", // TODO: Add endpoint when available
+  dancemosaic: "", // TODO: Add endpoint when available
+};
 
 type EditOperation = 'prefix' | 'in-between' | 'suffix';
 
-export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate }: ChatbotProps) {
+export default function Chatbot({ onFileReceived, onSend, onAvatarUpdate, selectedModel = 'bamm' }: ChatbotProps) {
+  const port = MODEL_ENDPOINTS[selectedModel as keyof typeof MODEL_ENDPOINTS] || MODEL_ENDPOINTS.bamm;
   const [textFields, setTextFields] = useState<string[]>([""]);
   const [submittedData, setSubmittedData] = useState<string[] | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);

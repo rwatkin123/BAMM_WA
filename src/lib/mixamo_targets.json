@@ -4,5 +4,27 @@
     { "charactername": "/mixamo/mesh.fbx", "targetskin": 1 , "yoffset": 1.5},
     { "charactername": "/mixamo/Remy.fbx", "targetskin": 3 , "yoffset": 0},
     { "charactername": "/mixamo/sporty_granny.fbx", "targetskin": 0 , "yoffset": 1},
-    {"charactername": "/mixamo/basic.fbx", "targetskin": 0 , "yoffset": 0.6}
+    {"charactername": "/mixamo/basic.fbx", "targetskin": 0 , "yoffset": 0.6},
+    {"charactername": "/mixamo/exo.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/vanguard.fbx", "targetskin": 0 , "yoffset": 1.5},
+    {"charactername": "/mixamo/abe.fbx", "targetskin": 0 , "yoffset": 1.2},
+    {"charactername": "/mixamo/peasant_girl.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/erika.fbx", "targetskin": 2 , "yoffset": 1.5},
+    {"charactername": "/mixamo/vampire.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/prisioner.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/skeletonzombie.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/amy.fbx", "targetskin": 0 , "yoffset": 0.6},
+    {"charactername": "/mixamo/joleen.fbx", "targetskin": 0 , "yoffset": 1.2},
+    {"charactername": "/mixamo/mousey.fbx", "targetskin": 0 , "yoffset": 0.5},
+    {"charactername": "/mixamo/warzombie.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/maw.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/marker_man.fbx", "targetskin": "0.children[4]" , "yoffset": 1.5},
+    {"charactername": "/mixamo/aj.fbx", "targetskin": 5 , "yoffset": 1.5},
+    {"charactername": "/mixamo/kaya.fbx", "targetskin": 2 , "yoffset": 0.6},
+    {"charactername": "/mixamo/peasant_man.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/paladin.fbx", "targetskin": 2 , "yoffset": 1.5},
+    {"charactername": "/mixamo/demon.fbx", "targetskin": 6 , "yoffset": 1.5},
+    {"charactername": "/mixamo/eve.fbx", "targetskin": 0 , "yoffset": 1.5}
+
+
   ]

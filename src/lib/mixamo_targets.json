@@ -24,7 +24,12 @@
     {"charactername": "/mixamo/peasant_man.fbx", "targetskin": 1 , "yoffset": 1.5},
     {"charactername": "/mixamo/paladin.fbx", "targetskin": 2 , "yoffset": 1.5},
     {"charactername": "/mixamo/demon.fbx", "targetskin": 6 , "yoffset": 1.5},
-    {"charactername": "/mixamo/eve.fbx", "targetskin": 0 , "yoffset": 1.5}
+    {"charactername": "/mixamo/eve.fbx", "targetskin": 0 , "yoffset": 1.5},
+    {"charactername": "/mixamo/whitecolin.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/uriel.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/knight.fbx", "targetskin": 2 , "yoffset": 1.5},
+    {"charactername": "/mixamo/brute.fbx", "targetskin": 1 , "yoffset": 1.5},
+    {"charactername": "/mixamo/lola.fbx", "targetskin": 1 , "yoffset": 1.5}
 
 
   ]
